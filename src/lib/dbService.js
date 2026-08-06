@@ -59,7 +59,50 @@ const saveDBImage = async (key, base64) => {
 };
 
 // Helper to seed localStorage with default data for 2026-2027
-const SEED_EVENTS = [];
+const SEED_EVENTS = [
+  {
+    id: 'evt-seed-1',
+    title: "Class-J Power Amplifier Design for 5G Smart Grid's Wireless Communication Applications",
+    slug: 'class-j-power-amplifier-design-for-5g-smart-grid',
+    type: 'Workshop',
+    startDate: '2026-08-25T10:00:00.000Z',
+    endDate: '2026-08-25T16:00:00.000Z',
+    venue: 'ECE Seminar Hall & Microwave Lab',
+    capacity: 60,
+    description: "An intensive hands-on workshop covering modern Class-J Power Amplifier design principles, RF simulation tools, and real-world deployment in 5G smart grid wireless communication networks.",
+    coverImage: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80',
+    isPublished: true,
+    createdAt: '2026-08-01T00:00:00.000Z'
+  },
+  {
+    id: 'evt-seed-2',
+    title: 'VLSI Design & System-on-Chip (SoC) Architectures',
+    slug: 'vlsi-design-and-system-on-chip-architectures',
+    type: 'Guest Lecture',
+    startDate: '2026-09-12T11:00:00.000Z',
+    endDate: '2026-09-12T13:00:00.000Z',
+    venue: 'Auditorium Hall B',
+    capacity: 120,
+    description: 'Expert guest lecture exploring cutting-edge VLSI semiconductor design flows, hardware description languages, and SoC fabrication technology.',
+    coverImage: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=800&q=80',
+    isPublished: true,
+    createdAt: '2026-08-02T00:00:00.000Z'
+  },
+  {
+    id: 'evt-seed-3',
+    title: 'ELCOMDAIS 2026 National Level Technical Symposium',
+    slug: 'elcomdais-2026-national-level-technical-symposium',
+    type: 'Symposium',
+    startDate: '2026-10-15T09:00:00.000Z',
+    endDate: '2026-10-16T17:00:00.000Z',
+    venue: 'Main Campus Auditorium & Labs',
+    capacity: 300,
+    description: 'Annual flagship national level technical symposium featuring Paper Presentation, Circuit Debugging, Hardware Hackathon, and Technical Quiz competitions.',
+    coverImage: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=800&q=80',
+    isPublished: true,
+    createdAt: '2026-08-03T00:00:00.000Z'
+  }
+];
 const SEED_ALBUMS = [];
 const SEED_IMAGES = [];
 const SEED_REGISTRATIONS = [];
@@ -169,6 +212,11 @@ export const dbService = {
       rawEvents = localEvents;
     }
 
+    // Fallback to seed events if no events exist in remote or local
+    if (!rawEvents || rawEvents.length === 0) {
+      rawEvents = [...SEED_EVENTS];
+    }
+
     for (let i = 0; i < rawEvents.length; i++) {
       const evt = rawEvents[i];
       if (!evt.type) evt.type = 'Workshop';
@@ -192,7 +240,7 @@ export const dbService = {
   },
 
   async saveEvent(eventData) {
-    const slug = eventData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const slug = eventData.slug || eventData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const cleanEvent = {
       ...eventData,
       slug,
@@ -204,33 +252,39 @@ export const dbService = {
       cleanEvent.createdAt = new Date().toISOString();
     }
 
-    // 1. ALWAYS save to local storage & IndexedDB first so data is NEVER lost
+    // Resolve any db: key to full image URL/data URL for portable cross-device display
+    let portableCoverImage = cleanEvent.coverImage || '';
+    if (portableCoverImage.startsWith('db:')) {
+      const key = portableCoverImage.replace('db:', '');
+      const dbImg = await getDBImage(key);
+      if (dbImg) portableCoverImage = dbImg;
+    }
+    cleanEvent.coverImage = portableCoverImage;
+
+    // 1. ALWAYS save to local storage & IndexedDB
     const localEvent = { ...cleanEvent };
     if (localEvent.coverImage && localEvent.coverImage.startsWith('data:')) {
       const imageKey = `event_image_${localEvent.id}`;
       await saveDBImage(imageKey, localEvent.coverImage);
-      localEvent.coverImage = `db:${imageKey}`;
     }
 
     const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
-    const matchIdx = events.findIndex(e => e.id === localEvent.id);
+    const matchIdx = events.findIndex(e => e.id === cleanEvent.id);
     if (matchIdx !== -1) {
-      events[matchIdx] = localEvent;
+      events[matchIdx] = cleanEvent;
     } else {
-      events.push(localEvent);
+      events.push(cleanEvent);
     }
     localStorage.setItem('elcomdais_events', JSON.stringify(events));
 
-    // 2. Sync to Supabase cloud database
+    // 2. Sync portable event (with real coverImage data!) to Supabase cloud database
     if (supabase) {
       try {
-        // Sync to settings table (key: 'events') for 100% reliable cloud persistence
         const fullEventsList = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
         await supabase
           .from('settings')
           .upsert({ key: 'events', value: JSON.stringify(fullEventsList), updatedAt: new Date().toISOString() });
 
-        // Also attempt direct events table upsert
         const ultraMinimalPayload = {
           id: cleanEvent.id,
           title: cleanEvent.title || '',
@@ -240,7 +294,7 @@ export const dbService = {
         };
         if (cleanEvent.startDate) ultraMinimalPayload.startDate = cleanEvent.startDate;
         if (cleanEvent.endDate) ultraMinimalPayload.endDate = cleanEvent.endDate;
-        if (cleanEvent.coverImage && !cleanEvent.coverImage.startsWith('db:')) {
+        if (cleanEvent.coverImage) {
           ultraMinimalPayload.coverImage = cleanEvent.coverImage;
         }
 
@@ -250,13 +304,7 @@ export const dbService = {
       }
     }
 
-    // Restore local image for immediate UI display
-    if (localEvent.coverImage && localEvent.coverImage.startsWith('db:')) {
-      const key = localEvent.coverImage.replace('db:', '');
-      const dbImg = await getDBImage(key);
-      if (dbImg) localEvent.coverImage = dbImg;
-    }
-    return localEvent;
+    return cleanEvent;
   },
 
   async deleteEvent(id) {
@@ -274,6 +322,10 @@ export const dbService = {
       try {
         await supabase.from('events').delete().eq('id', id);
         await supabase.from('registrations').delete().eq('eventId', id);
+        const fullEventsList = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+        await supabase
+          .from('settings')
+          .upsert({ key: 'events', value: JSON.stringify(fullEventsList), updatedAt: new Date().toISOString() });
       } catch (e) {
         console.warn('Supabase deleteEvent sync failed:', e);
       }
@@ -623,7 +675,7 @@ export const dbService = {
     }
     if (!rawData) return null;
 
-    // Clean up any legacy IndexedDB 'db:' image keys if resolution fails
+    // Restore IndexedDB 'db:' image keys if local fallback, else keep portable base64/HTTP image
     const restoreNode = async (node, id) => {
       if (node.image && node.image.startsWith('db:')) {
         const key = node.image.replace('db:', '');
@@ -657,33 +709,46 @@ export const dbService = {
 
   async saveCommittee(committeeData) {
     const cleanData = JSON.parse(JSON.stringify(committeeData));
+    const portableData = JSON.parse(JSON.stringify(committeeData));
 
-    // Store images in IndexedDB to avoid exceeding browser localStorage 5MB quota
-    const processNode = async (node, id) => {
+    // Store images in IndexedDB locally for quota savings, but ensure portableData contains full portable base64 / HTTP images for cloud sync
+    const processNode = async (node, id, portableNode) => {
       if (node.image && node.image.startsWith('data:')) {
         await saveDBImage(id, node.image);
         node.image = `db:${id}`;
+        portableNode.image = node.image; // start with current
+        // portableNode keeps node.image original data: string
+      } else if (node.image && node.image.startsWith('db:')) {
+        const key = node.image.replace('db:', '');
+        const dbImg = await getDBImage(key);
+        if (dbImg) portableNode.image = dbImg;
       }
+
       if (node.members) {
         for (let i = 0; i < node.members.length; i++) {
           const sub = node.members[i];
+          const portableSub = portableNode.members ? portableNode.members[i] : null;
           if (sub.image && sub.image.startsWith('data:')) {
             const subId = `${id}_sub_${i}`;
             await saveDBImage(subId, sub.image);
             sub.image = `db:${subId}`;
+          } else if (sub.image && sub.image.startsWith('db:')) {
+            const key = sub.image.replace('db:', '');
+            const dbImg = await getDBImage(key);
+            if (dbImg && portableSub) portableSub.image = dbImg;
           }
         }
       }
     };
 
     for (let i = 0; i < cleanData.faculty.length; i++) {
-      await processNode(cleanData.faculty[i], `faculty_${i}`);
+      await processNode(cleanData.faculty[i], `faculty_${i}`, portableData.faculty[i]);
     }
     for (let i = 0; i < cleanData.presidents.length; i++) {
-      await processNode(cleanData.presidents[i], `presidents_${i}`);
+      await processNode(cleanData.presidents[i], `presidents_${i}`, portableData.presidents[i]);
     }
     for (let i = 0; i < cleanData.core.length; i++) {
-      await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`);
+      await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`, portableData.core[i]);
     }
 
     try {
@@ -692,12 +757,12 @@ export const dbService = {
       console.warn('localStorage quota note for committee details:', e);
     }
 
-    // Sync full committeeData (with images) to Supabase settings table if connected
+    // Sync full portableData (with real portable base64/HTTP image URLs!) to Supabase settings table
     if (supabase) {
       try {
         const { error } = await supabase
           .from('settings')
-          .upsert({ key: 'committee', value: JSON.stringify(committeeData), updatedAt: new Date().toISOString() });
+          .upsert({ key: 'committee', value: JSON.stringify(portableData), updatedAt: new Date().toISOString() });
         if (error) {
           console.warn('Supabase saveCommittee note:', error.message || error);
         }
@@ -706,7 +771,7 @@ export const dbService = {
       }
     }
 
-    return committeeData;
+    return portableData;
   },
 
   // --- AUTHENTICATION ---
