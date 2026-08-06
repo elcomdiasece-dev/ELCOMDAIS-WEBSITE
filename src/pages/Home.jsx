@@ -15,8 +15,9 @@ export default function Home() {
         const events = await dbService.getEvents();
         // Filter out past events, sort by upcoming date, take first 3
         const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const upcoming = events
-          .filter(e => e.isPublished && new Date(e.startDate) >= now)
+          .filter(e => e.isPublished !== false && (!e.startDate || new Date(e.startDate) >= startOfToday))
           .slice(0, 3);
         setUpcomingEvents(upcoming);
 

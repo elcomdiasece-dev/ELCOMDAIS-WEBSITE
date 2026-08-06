@@ -22,7 +22,7 @@ export default function CalendarPage() {
       try {
         const data = await dbService.getEvents();
         // Only show published events
-        const published = data.filter(e => e.isPublished);
+        const published = data.filter(e => e.isPublished !== false);
         setEvents(published);
         setFilteredEvents(published);
       } catch (err) {
