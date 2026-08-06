@@ -637,12 +637,12 @@ export const dbService = {
     }
     if (!rawData) return null;
 
-    // Restore images from IndexedDB
+    // Clean up any legacy IndexedDB 'db:' image keys if resolution fails
     const restoreNode = async (node, id) => {
       if (node.image && node.image.startsWith('db:')) {
         const key = node.image.replace('db:', '');
         const dbImg = await getDBImage(key);
-        if (dbImg) node.image = dbImg;
+        node.image = dbImg || '';
       }
       if (node.members) {
         for (let i = 0; i < node.members.length; i++) {
@@ -650,7 +650,7 @@ export const dbService = {
           if (sub.image && sub.image.startsWith('db:')) {
             const key = sub.image.replace('db:', '');
             const dbImg = await getDBImage(key);
-            if (dbImg) sub.image = dbImg;
+            sub.image = dbImg || '';
           }
         }
       }
@@ -672,42 +672,15 @@ export const dbService = {
   async saveCommittee(committeeData) {
     const cleanData = JSON.parse(JSON.stringify(committeeData));
 
-    // 1. ALWAYS process IndexedDB images and save to localStorage first
-    const processNode = async (node, id) => {
-      if (node.image && node.image.startsWith('data:')) {
-        await saveDBImage(id, node.image);
-        node.image = `db:${id}`;
-      }
-      if (node.members) {
-        for (let i = 0; i < node.members.length; i++) {
-          const sub = node.members[i];
-          if (sub.image && sub.image.startsWith('data:')) {
-            const subId = `${id}_sub_${i}`;
-            await saveDBImage(subId, sub.image);
-            sub.image = `db:${subId}`;
-          }
-        }
-      }
-    };
-
-    for (let i = 0; i < cleanData.faculty.length; i++) {
-      await processNode(cleanData.faculty[i], `faculty_${i}`);
-    }
-    for (let i = 0; i < cleanData.presidents.length; i++) {
-      await processNode(cleanData.presidents[i], `presidents_${i}`);
-    }
-    for (let i = 0; i < cleanData.core.length; i++) {
-      await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`);
-    }
-
+    // Save full image URLs/base64 directly to localStorage for instant multi-device rendering
     localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
 
-    // 2. Sync cleanData with full base64 images to Supabase settings table if present
+    // Sync cleanData to Supabase settings table if connected
     if (supabase) {
       try {
         const { error } = await supabase
           .from('settings')
-          .upsert({ key: 'committee', value: JSON.stringify(committeeData), updatedAt: new Date().toISOString() });
+          .upsert({ key: 'committee', value: JSON.stringify(cleanData), updatedAt: new Date().toISOString() });
         if (error) {
           console.warn('Supabase saveCommittee note:', error.message || error);
         }

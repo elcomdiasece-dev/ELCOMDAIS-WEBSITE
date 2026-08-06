@@ -185,7 +185,7 @@ export default function About() {
           overflow: 'hidden',
           borderBottom: '1px solid var(--border-color)'
         }}>
-          {member.image ? (
+          {member.image && (member.image.startsWith('http://') || member.image.startsWith('https://') || member.image.startsWith('data:')) ? (
             <img
               src={member.image}
               alt={member.name || member.role}
@@ -300,7 +300,7 @@ export default function About() {
                     justifyContent: 'center',
                     flexShrink: 0
                   }}>
-                    {sub.image ? (
+                    {sub.image && (sub.image.startsWith('http://') || sub.image.startsWith('https://') || sub.image.startsWith('data:')) ? (
                       <img src={sub.image} alt={sub.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <User size={16} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
