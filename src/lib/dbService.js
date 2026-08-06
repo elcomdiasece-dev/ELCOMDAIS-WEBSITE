@@ -716,12 +716,11 @@ export const dbService = {
       if (node.image && node.image.startsWith('data:')) {
         await saveDBImage(id, node.image);
         node.image = `db:${id}`;
-        portableNode.image = node.image; // start with current
-        // portableNode keeps node.image original data: string
+        // portableNode.image remains the full data: base64 string for Supabase cloud sync!
       } else if (node.image && node.image.startsWith('db:')) {
         const key = node.image.replace('db:', '');
         const dbImg = await getDBImage(key);
-        if (dbImg) portableNode.image = dbImg;
+        if (dbImg && portableNode) portableNode.image = dbImg;
       }
 
       if (node.members) {
@@ -732,6 +731,7 @@ export const dbService = {
             const subId = `${id}_sub_${i}`;
             await saveDBImage(subId, sub.image);
             sub.image = `db:${subId}`;
+            // portableSub.image remains the full data: base64 string for Supabase cloud sync!
           } else if (sub.image && sub.image.startsWith('db:')) {
             const key = sub.image.replace('db:', '');
             const dbImg = await getDBImage(key);
