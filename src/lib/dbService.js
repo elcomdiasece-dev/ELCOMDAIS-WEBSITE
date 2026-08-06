@@ -672,15 +672,46 @@ export const dbService = {
   async saveCommittee(committeeData) {
     const cleanData = JSON.parse(JSON.stringify(committeeData));
 
-    // Save full image URLs/base64 directly to localStorage for instant multi-device rendering
-    localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
+    // Store images in IndexedDB to avoid exceeding browser localStorage 5MB quota
+    const processNode = async (node, id) => {
+      if (node.image && node.image.startsWith('data:')) {
+        await saveDBImage(id, node.image);
+        node.image = `db:${id}`;
+      }
+      if (node.members) {
+        for (let i = 0; i < node.members.length; i++) {
+          const sub = node.members[i];
+          if (sub.image && sub.image.startsWith('data:')) {
+            const subId = `${id}_sub_${i}`;
+            await saveDBImage(subId, sub.image);
+            sub.image = `db:${subId}`;
+          }
+        }
+      }
+    };
 
-    // Sync cleanData to Supabase settings table if connected
+    for (let i = 0; i < cleanData.faculty.length; i++) {
+      await processNode(cleanData.faculty[i], `faculty_${i}`);
+    }
+    for (let i = 0; i < cleanData.presidents.length; i++) {
+      await processNode(cleanData.presidents[i], `presidents_${i}`);
+    }
+    for (let i = 0; i < cleanData.core.length; i++) {
+      await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`);
+    }
+
+    try {
+      localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
+    } catch (e) {
+      console.warn('localStorage quota note for committee details:', e);
+    }
+
+    // Sync full committeeData (with images) to Supabase settings table if connected
     if (supabase) {
       try {
         const { error } = await supabase
           .from('settings')
-          .upsert({ key: 'committee', value: JSON.stringify(cleanData), updatedAt: new Date().toISOString() });
+          .upsert({ key: 'committee', value: JSON.stringify(committeeData), updatedAt: new Date().toISOString() });
         if (error) {
           console.warn('Supabase saveCommittee note:', error.message || error);
         }
@@ -689,7 +720,7 @@ export const dbService = {
       }
     }
 
-    return cleanData;
+    return committeeData;
   },
 
   // --- AUTHENTICATION ---

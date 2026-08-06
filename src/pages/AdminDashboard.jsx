@@ -566,8 +566,8 @@ export default function AdminDashboard() {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Export as JPEG with 100% maximum quality
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 1.0);
+        // Export as JPEG with 80% optimized quality (~25KB each)
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
         callback(compressedBase64);
       };
       img.src = event.target.result;
