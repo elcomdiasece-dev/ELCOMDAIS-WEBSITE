@@ -6,16 +6,21 @@ const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 let rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/^["']|["']$/g, '');
 let rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim().replace(/^["']|["']$/g, '');
 
-// Validate if rawUrl is actually a hostname/URL and not an anon key pasted by mistake
+// Strictly validate that rawUrl is a valid Supabase project domain and not an API key
 const isValidSupabaseUrl = (str) => {
-  if (!str || str.startsWith('sb_') || str.startsWith('eyJ') || !str.includes('.')) {
+  if (!str || typeof str !== 'string') return false;
+  const s = str.toLowerCase();
+  if (s.includes('sb_publishable') || s.includes('eyjhbgci') || s.includes('anon_key')) {
+    return false;
+  }
+  if (!s.includes('.supabase.co') && !s.includes('.supabase.')) {
     return false;
   }
   return true;
 };
 
 if (!isValidSupabaseUrl(rawUrl)) {
-  console.warn('VITE_SUPABASE_URL is invalid or misconfigured. Using project Supabase URL.');
+  console.warn('VITE_SUPABASE_URL is invalid or misconfigured. Falling back to project Supabase URL.');
   rawUrl = FALLBACK_URL;
 }
 
@@ -23,7 +28,8 @@ if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
   rawUrl = `https://${rawUrl}`;
 }
 
-if (!rawKey || rawKey.startsWith('http')) {
+if (!rawKey || rawKey.startsWith('http') || rawKey.length < 20) {
+  console.warn('VITE_SUPABASE_ANON_KEY is invalid or missing. Falling back to project Supabase key.');
   rawKey = FALLBACK_KEY;
 }
 
@@ -38,5 +44,6 @@ if (rawUrl && rawKey) {
 }
 
 export const supabase = client;
+
 
 
