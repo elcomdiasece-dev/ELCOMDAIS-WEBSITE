@@ -187,12 +187,6 @@ export const dbService = {
       cleanEvent.createdAt = new Date().toISOString();
     }
 
-    if (cleanEvent.coverImage && cleanEvent.coverImage.startsWith('data:')) {
-      const imageKey = `event_image_${cleanEvent.id}`;
-      await saveDBImage(imageKey, cleanEvent.coverImage);
-      cleanEvent.coverImage = `db:${imageKey}`;
-    }
-
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -201,15 +195,26 @@ export const dbService = {
           .select()
           .single();
         if (!error && data) {
-          if (data.coverImage && data.coverImage.startsWith('db:')) {
-            const key = data.coverImage.replace('db:', '');
-            data.coverImage = await getDBImage(key);
+          const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+          const matchIdx = events.findIndex(e => e.id === data.id);
+          if (matchIdx !== -1) {
+            events[matchIdx] = data;
+          } else {
+            events.push(data);
           }
+          localStorage.setItem('elcomdais_events', JSON.stringify(events));
           return data;
         }
       } catch (e) {
         console.warn('Supabase saveEvent failed, falling back to local DB', e);
       }
+    }
+
+    // Local DB fallback mode (when Supabase is offline/not configured)
+    if (cleanEvent.coverImage && cleanEvent.coverImage.startsWith('data:')) {
+      const imageKey = `event_image_${cleanEvent.id}`;
+      await saveDBImage(imageKey, cleanEvent.coverImage);
+      cleanEvent.coverImage = `db:${imageKey}`;
     }
 
     const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
@@ -603,6 +608,23 @@ export const dbService = {
   async saveCommittee(committeeData) {
     const cleanData = JSON.parse(JSON.stringify(committeeData));
 
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('settings')
+          .upsert({ key: 'committee', value: JSON.stringify(cleanData), updatedAt: new Date().toISOString() })
+          .select()
+          .single();
+        if (!error && data) {
+          localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
+          return JSON.parse(data.value);
+        }
+      } catch (e) {
+        console.warn('Supabase saveCommittee failed, falling back to local DB', e);
+      }
+    }
+
+    // Local DB fallback mode (when Supabase is offline/not configured)
     const processNode = async (node, id) => {
       if (node.image && node.image.startsWith('data:')) {
         await saveDBImage(id, node.image);
@@ -630,18 +652,6 @@ export const dbService = {
       await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`);
     }
 
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('settings')
-          .upsert({ key: 'committee', value: JSON.stringify(cleanData), updatedAt: new Date().toISOString() })
-          .select()
-          .single();
-        if (!error && data) return JSON.parse(data.value);
-      } catch (e) {
-        console.warn('Supabase saveCommittee failed, falling back to local DB', e);
-      }
-    }
     localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
     return committeeData;
   },
