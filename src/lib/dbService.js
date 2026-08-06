@@ -122,27 +122,43 @@ initLocalDb();
 export const dbService = {
   // --- EVENTS ---
   async getEvents() {
-    let rawEvents = null;
+    let remoteEvents = null;
     if (supabase) {
       try {
         const { data, error } = await supabase
           .from('events')
           .select('*')
           .order('startDate', { ascending: true });
-        if (!error && data) rawEvents = data;
+        if (!error && data && data.length > 0) {
+          remoteEvents = data;
+        }
       } catch (e) {
         console.warn('Supabase getEvents failed, falling back to local DB', e);
       }
     }
-    if (!rawEvents) {
-      rawEvents = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+
+    const localEvents = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+    let rawEvents = [];
+
+    if (remoteEvents && remoteEvents.length > 0) {
+      rawEvents = [...remoteEvents];
+      // Merge local events that might not be in remote yet
+      const remoteIds = new Set(remoteEvents.map(e => e.id));
+      for (const loc of localEvents) {
+        if (!remoteIds.has(loc.id)) {
+          rawEvents.push(loc);
+        }
+      }
+    } else {
+      rawEvents = localEvents;
     }
 
     for (let i = 0; i < rawEvents.length; i++) {
       const evt = rawEvents[i];
       if (evt.coverImage && evt.coverImage.startsWith('db:')) {
         const key = evt.coverImage.replace('db:', '');
-        evt.coverImage = await getDBImage(key);
+        const dbImg = await getDBImage(key);
+        if (dbImg) evt.coverImage = dbImg;
       }
     }
     return rawEvents;
@@ -169,7 +185,8 @@ export const dbService = {
 
     if (evt && evt.coverImage && evt.coverImage.startsWith('db:')) {
       const key = evt.coverImage.replace('db:', '');
-      evt.coverImage = await getDBImage(key);
+      const dbImg = await getDBImage(key);
+      if (dbImg) evt.coverImage = dbImg;
     }
     return evt;
   },
@@ -187,50 +204,44 @@ export const dbService = {
       cleanEvent.createdAt = new Date().toISOString();
     }
 
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('events')
-          .upsert(cleanEvent)
-          .select()
-          .single();
-        if (!error && data) {
-          const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
-          const matchIdx = events.findIndex(e => e.id === data.id);
-          if (matchIdx !== -1) {
-            events[matchIdx] = data;
-          } else {
-            events.push(data);
-          }
-          localStorage.setItem('elcomdais_events', JSON.stringify(events));
-          return data;
-        }
-      } catch (e) {
-        console.warn('Supabase saveEvent failed, falling back to local DB', e);
-      }
-    }
-
-    // Local DB fallback mode (when Supabase is offline/not configured)
-    if (cleanEvent.coverImage && cleanEvent.coverImage.startsWith('data:')) {
-      const imageKey = `event_image_${cleanEvent.id}`;
-      await saveDBImage(imageKey, cleanEvent.coverImage);
-      cleanEvent.coverImage = `db:${imageKey}`;
+    // 1. ALWAYS save to local storage & IndexedDB first so data is NEVER lost
+    const localEvent = { ...cleanEvent };
+    if (localEvent.coverImage && localEvent.coverImage.startsWith('data:')) {
+      const imageKey = `event_image_${localEvent.id}`;
+      await saveDBImage(imageKey, localEvent.coverImage);
+      localEvent.coverImage = `db:${imageKey}`;
     }
 
     const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
-    const matchIdx = events.findIndex(e => e.id === cleanEvent.id);
+    const matchIdx = events.findIndex(e => e.id === localEvent.id);
     if (matchIdx !== -1) {
-      events[matchIdx] = cleanEvent;
+      events[matchIdx] = localEvent;
     } else {
-      events.push(cleanEvent);
+      events.push(localEvent);
     }
     localStorage.setItem('elcomdais_events', JSON.stringify(events));
 
-    if (cleanEvent.coverImage && cleanEvent.coverImage.startsWith('db:')) {
-      const key = cleanEvent.coverImage.replace('db:', '');
-      cleanEvent.coverImage = await getDBImage(key);
+    // 2. Sync to Supabase in the background if connected
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('events')
+          .upsert(cleanEvent);
+        if (error) {
+          console.warn('Supabase saveEvent upsert note:', error.message || error);
+        }
+      } catch (e) {
+        console.warn('Supabase saveEvent sync failed, using local DB:', e);
+      }
     }
-    return cleanEvent;
+
+    // Restore local image for immediate UI display
+    if (localEvent.coverImage && localEvent.coverImage.startsWith('db:')) {
+      const key = localEvent.coverImage.replace('db:', '');
+      const dbImg = await getDBImage(key);
+      if (dbImg) localEvent.coverImage = dbImg;
+    }
+    return localEvent;
   },
 
   async deleteEvent(id) {
@@ -345,21 +356,32 @@ export const dbService = {
 
   // --- PHOTO GALLERY ---
   async getAlbums() {
+    let remoteAlbums = null;
     if (supabase) {
       try {
         const { data, error } = await supabase
           .from('albums')
           .select('*')
           .order('createdAt', { ascending: false });
-        if (!error && data) return data;
+        if (!error && data && data.length > 0) remoteAlbums = data;
       } catch (e) {
         console.warn('Supabase getAlbums failed, falling back to local DB', e);
       }
     }
-    return JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
+
+    const localAlbums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
+    if (remoteAlbums && remoteAlbums.length > 0) {
+      const remoteIds = new Set(remoteAlbums.map(a => a.id));
+      for (const loc of localAlbums) {
+        if (!remoteIds.has(loc.id)) remoteAlbums.push(loc);
+      }
+      return remoteAlbums;
+    }
+    return localAlbums;
   },
 
   async getAlbumImages(albumId) {
+    let remoteImages = null;
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -367,68 +389,52 @@ export const dbService = {
           .select('*')
           .eq('albumId', albumId)
           .order('id', { ascending: true });
-        if (!error && data) return data;
+        if (!error && data && data.length > 0) remoteImages = data;
       } catch (e) {
         console.warn(`Supabase getAlbumImages (${albumId}) failed, falling back to IndexedDB`, e);
       }
     }
 
+    let localImages = [];
     try {
       const db = await initIndexedDB();
-      return new Promise((resolve) => {
+      localImages = await new Promise((resolve) => {
         const transaction = db.transaction('gallery_images', 'readonly');
         const store = transaction.objectStore('gallery_images');
         const index = store.index('albumId');
         const request = index.getAll(albumId);
-        request.onsuccess = () => {
-          resolve(request.result || []);
-        };
-        request.onerror = () => {
-          resolve([]);
-        };
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => resolve([]);
       });
     } catch (err) {
       console.error('IndexedDB getAlbumImages failed:', err);
-      return [];
     }
+
+    if (remoteImages && remoteImages.length > 0) {
+      const remoteIds = new Set(remoteImages.map(i => i.id));
+      for (const loc of localImages) {
+        if (!remoteIds.has(loc.id)) remoteImages.push(loc);
+      }
+      return remoteImages;
+    }
+    return localImages;
   },
 
   async createAlbum(albumData, fileUrls = []) {
-    const albumId = `alb-${Date.now()}`;
+    const albumId = albumData.id || `alb-${Date.now()}`;
     const newAlbum = {
       id: albumId,
       title: albumData.title,
       description: albumData.description,
-      coverImage: fileUrls[0] || 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=600&q=80',
+      coverImage: fileUrls[0] || albumData.coverImage || 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=600&q=80',
       createdAt: albumData.createdAt || new Date().toISOString()
     };
 
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('albums')
-          .insert(newAlbum)
-          .select()
-          .single();
-
-        if (!error && data) {
-          if (fileUrls.length > 0) {
-            const imgObjs = fileUrls.map((url, idx) => ({
-              albumId: data.id,
-              url,
-              caption: `Photo from ${data.title}`
-            }));
-            await supabase.from('images').insert(imgObjs);
-          }
-          return data;
-        }
-      } catch (e) {
-        console.warn('Supabase createAlbum failed, falling back to local DB', e);
-      }
-    }
-
+    // 1. ALWAYS Save locally to localStorage & IndexedDB
     const albums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
-    albums.push(newAlbum);
+    const matchIdx = albums.findIndex(a => a.id === newAlbum.id);
+    if (matchIdx !== -1) albums[matchIdx] = newAlbum;
+    else albums.push(newAlbum);
     localStorage.setItem('elcomdais_albums', JSON.stringify(albums));
 
     if (fileUrls.length > 0) {
@@ -436,7 +442,6 @@ export const dbService = {
         const db = await initIndexedDB();
         const transaction = db.transaction('gallery_images', 'readwrite');
         const store = transaction.objectStore('gallery_images');
-
         fileUrls.forEach((url, idx) => {
           store.put({
             id: `img-${Date.now()}-${idx}`,
@@ -450,6 +455,28 @@ export const dbService = {
       }
     }
 
+    // 2. Sync to Supabase in background
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('albums')
+          .upsert(newAlbum)
+          .select()
+          .single();
+
+        if (!error && data && fileUrls.length > 0) {
+          const imgObjs = fileUrls.map((url, idx) => ({
+            albumId: data.id,
+            url,
+            caption: `Photo from ${data.title}`
+          }));
+          await supabase.from('images').upsert(imgObjs);
+        }
+      } catch (e) {
+        console.warn('Supabase createAlbum sync failed, using local DB:', e);
+      }
+    }
+
     return newAlbum;
   },
 
@@ -458,28 +485,11 @@ export const dbService = {
       id: albumId,
       title: albumData.title,
       description: albumData.description,
-      coverImage: fileUrls[0] || 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=600&q=80',
+      coverImage: fileUrls[0] || albumData.coverImage || 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=600&q=80',
       createdAt: albumData.createdAt || new Date().toISOString()
     };
 
-    if (supabase) {
-      try {
-        await supabase.from('albums').upsert(updatedAlbum);
-        await supabase.from('images').delete().eq('albumId', albumId);
-        if (fileUrls.length > 0) {
-          const imgObjs = fileUrls.map((url, idx) => ({
-            albumId,
-            url,
-            caption: `Photo from ${albumData.title}`
-          }));
-          await supabase.from('images').insert(imgObjs);
-        }
-        return updatedAlbum;
-      } catch (e) {
-        console.warn('Supabase saveAlbum failed, falling back to local DB', e);
-      }
-    }
-
+    // 1. ALWAYS Save locally to localStorage & IndexedDB
     const albums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
     const matchIdx = albums.findIndex(a => a.id === albumId);
     if (matchIdx !== -1) {
@@ -489,34 +499,53 @@ export const dbService = {
     }
     localStorage.setItem('elcomdais_albums', JSON.stringify(albums));
 
-    try {
-      const db = await initIndexedDB();
-      const deleteTransaction = db.transaction('gallery_images', 'readwrite');
-      const deleteStore = deleteTransaction.objectStore('gallery_images');
+    if (fileUrls.length > 0) {
+      try {
+        const db = await initIndexedDB();
+        const deleteTransaction = db.transaction('gallery_images', 'readwrite');
+        const deleteStore = deleteTransaction.objectStore('gallery_images');
+        const index = deleteStore.index('albumId');
+        const keysRequest = index.getAllKeys(albumId);
 
-      const index = deleteStore.index('albumId');
-      const keysRequest = index.getAllKeys(albumId);
-
-      await new Promise((resolve) => {
-        keysRequest.onsuccess = () => {
-          const keys = keysRequest.result || [];
-          const deletePromises = keys.map(key => deleteStore.delete(key));
-          resolve(Promise.all(deletePromises));
-        };
-      });
-
-      const insertTransaction = db.transaction('gallery_images', 'readwrite');
-      const insertStore = insertTransaction.objectStore('gallery_images');
-      fileUrls.forEach((url, idx) => {
-        insertStore.put({
-          id: `img-${Date.now()}-${idx}`,
-          albumId,
-          url,
-          caption: `Photo from ${updatedAlbum.title}`
+        await new Promise((resolve) => {
+          keysRequest.onsuccess = () => {
+            const keys = keysRequest.result || [];
+            const deletePromises = keys.map(key => deleteStore.delete(key));
+            resolve(Promise.all(deletePromises));
+          };
         });
-      });
-    } catch (err) {
-      console.error('Error saving album images to IndexedDB:', err);
+
+        const insertTransaction = db.transaction('gallery_images', 'readwrite');
+        const insertStore = insertTransaction.objectStore('gallery_images');
+        fileUrls.forEach((url, idx) => {
+          insertStore.put({
+            id: `img-${Date.now()}-${idx}`,
+            albumId,
+            url,
+            caption: `Photo from ${updatedAlbum.title}`
+          });
+        });
+      } catch (err) {
+        console.error('Error saving album images to IndexedDB:', err);
+      }
+    }
+
+    // 2. Sync to Supabase in background
+    if (supabase) {
+      try {
+        await supabase.from('albums').upsert(updatedAlbum);
+        if (fileUrls.length > 0) {
+          await supabase.from('images').delete().eq('albumId', albumId);
+          const imgObjs = fileUrls.map((url, idx) => ({
+            albumId,
+            url,
+            caption: `Photo from ${albumData.title}`
+          }));
+          await supabase.from('images').insert(imgObjs);
+        }
+      } catch (e) {
+        console.warn('Supabase saveAlbum sync failed, using local DB:', e);
+      }
     }
 
     return updatedAlbum;
