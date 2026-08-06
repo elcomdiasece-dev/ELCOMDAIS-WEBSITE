@@ -224,11 +224,40 @@ export const dbService = {
     // 2. Sync to Supabase in the background if connected
     if (supabase) {
       try {
-        const { error } = await supabase
+        const corePayload = {
+          id: cleanEvent.id,
+          title: cleanEvent.title || '',
+          type: cleanEvent.type || 'Workshop',
+          startDate: cleanEvent.startDate || null,
+          endDate: cleanEvent.endDate || null,
+          venue: cleanEvent.venue || '',
+          capacity: cleanEvent.capacity || 50,
+          coverImage: cleanEvent.coverImage || '',
+          speaker: cleanEvent.speaker || '',
+          description: cleanEvent.description || '',
+          slug: cleanEvent.slug || '',
+          isPublished: cleanEvent.isPublished !== undefined ? cleanEvent.isPublished : true,
+          createdAt: cleanEvent.createdAt || new Date().toISOString(),
+          updatedAt: cleanEvent.updatedAt || new Date().toISOString()
+        };
+
+        // First try upserting with extra optional fields
+        const fullPayload = { ...corePayload };
+        if (cleanEvent.faq) fullPayload.faq = cleanEvent.faq;
+        if (cleanEvent.formFields) fullPayload.formFields = cleanEvent.formFields;
+        if (cleanEvent.prerequisites) fullPayload.prerequisites = cleanEvent.prerequisites;
+
+        let { error } = await supabase
           .from('events')
-          .upsert(cleanEvent);
+          .upsert(fullPayload);
+
+        // If error occurs due to unknown columns (like bannerPosition or prerequisites), retry with standard core columns
         if (error) {
-          console.warn('Supabase saveEvent upsert note:', error.message || error);
+          console.warn('Supabase full payload upsert note (retrying with core schema):', error.message || error);
+          const retry = await supabase.from('events').upsert(corePayload);
+          if (retry.error) {
+            console.warn('Supabase core saveEvent note:', retry.error.message || retry.error);
+          }
         }
       } catch (e) {
         console.warn('Supabase saveEvent sync failed, using local DB:', e);
