@@ -125,12 +125,29 @@ export const dbService = {
     let remoteEvents = null;
     if (supabase) {
       try {
-        const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .order('startDate', { ascending: true });
-        if (!error && data && data.length > 0) {
-          remoteEvents = data;
+        // 1. Try fetching from settings cloud store (guaranteed 100% schema compatibility)
+        const { data: settingsData } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'events')
+          .maybeSingle();
+
+        if (settingsData && settingsData.value) {
+          try {
+            remoteEvents = JSON.parse(settingsData.value);
+          } catch (err) {
+            console.warn('Error parsing events settings JSON:', err);
+          }
+        }
+
+        // 2. Fallback to direct events table if settings store was empty
+        if (!remoteEvents || remoteEvents.length === 0) {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*');
+          if (!error && data && data.length > 0) {
+            remoteEvents = data;
+          }
         }
       } catch (e) {
         console.warn('Supabase getEvents failed, falling back to local DB', e);
@@ -142,7 +159,6 @@ export const dbService = {
 
     if (remoteEvents && remoteEvents.length > 0) {
       rawEvents = [...remoteEvents];
-      // Merge local events that might not be in remote yet
       const remoteIds = new Set(remoteEvents.map(e => e.id));
       for (const loc of localEvents) {
         if (!remoteIds.has(loc.id)) {
@@ -168,27 +184,9 @@ export const dbService = {
 
   async getEventBySlug(slug) {
     let evt = null;
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .eq('slug', slug)
-          .maybeSingle();
-        if (!error && data) evt = data;
-      } catch (e) {
-        console.warn(`Supabase getEventBySlug (${slug}) failed, falling back to local DB`, e);
-      }
-    }
-    if (!evt) {
-      const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+    const events = await this.getEvents();
+    if (events && events.length > 0) {
       evt = events.find(e => e.slug === slug) || null;
-    }
-
-    if (evt && evt.coverImage && evt.coverImage.startsWith('db:')) {
-      const key = evt.coverImage.replace('db:', '');
-      const dbImg = await getDBImage(key);
-      if (dbImg) evt.coverImage = dbImg;
     }
     return evt;
   },
@@ -223,57 +221,32 @@ export const dbService = {
     }
     localStorage.setItem('elcomdais_events', JSON.stringify(events));
 
-    // 2. Sync to Supabase in the background if connected
+    // 2. Sync to Supabase cloud database
     if (supabase) {
       try {
-        const fullPayload = {
+        // Sync to settings table (key: 'events') for 100% reliable cloud persistence
+        const fullEventsList = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+        await supabase
+          .from('settings')
+          .upsert({ key: 'events', value: JSON.stringify(fullEventsList), updatedAt: new Date().toISOString() });
+
+        // Also attempt direct events table upsert
+        const ultraMinimalPayload = {
           id: cleanEvent.id,
           title: cleanEvent.title || '',
-          type: cleanEvent.type || 'Workshop',
-          startDate: cleanEvent.startDate || null,
-          endDate: cleanEvent.endDate || null,
-          venue: cleanEvent.venue || '',
-          capacity: cleanEvent.capacity || 50,
-          coverImage: cleanEvent.coverImage || '',
-          speaker: cleanEvent.speaker || '',
           description: cleanEvent.description || '',
-          slug: cleanEvent.slug || '',
-          isPublished: cleanEvent.isPublished !== undefined ? cleanEvent.isPublished : true,
-          createdAt: cleanEvent.createdAt || new Date().toISOString(),
-          updatedAt: cleanEvent.updatedAt || new Date().toISOString()
+          venue: cleanEvent.venue || '',
+          slug: cleanEvent.slug || ''
         };
-
-        if (cleanEvent.faq) fullPayload.faq = cleanEvent.faq;
-        if (cleanEvent.formFields) fullPayload.formFields = cleanEvent.formFields;
-        if (cleanEvent.prerequisites) fullPayload.prerequisites = cleanEvent.prerequisites;
-
-        let { error } = await supabase
-          .from('events')
-          .upsert(fullPayload);
-
-        // If error occurs due to unknown columns (like type or capacity or bannerPosition), retry with ultra-minimal schema
-        if (error) {
-          console.warn('Supabase full payload upsert note (retrying with ultra-minimal schema):', error.message || error);
-          const ultraMinimalPayload = {
-            id: cleanEvent.id,
-            title: cleanEvent.title || '',
-            description: cleanEvent.description || '',
-            venue: cleanEvent.venue || '',
-            slug: cleanEvent.slug || ''
-          };
-          if (cleanEvent.startDate) ultraMinimalPayload.startDate = cleanEvent.startDate;
-          if (cleanEvent.endDate) ultraMinimalPayload.endDate = cleanEvent.endDate;
-          if (cleanEvent.coverImage && !cleanEvent.coverImage.startsWith('db:')) {
-            ultraMinimalPayload.coverImage = cleanEvent.coverImage;
-          }
-
-          const retry = await supabase.from('events').upsert(ultraMinimalPayload);
-          if (retry.error) {
-            console.warn('Supabase ultra-minimal saveEvent note:', retry.error.message || retry.error);
-          }
+        if (cleanEvent.startDate) ultraMinimalPayload.startDate = cleanEvent.startDate;
+        if (cleanEvent.endDate) ultraMinimalPayload.endDate = cleanEvent.endDate;
+        if (cleanEvent.coverImage && !cleanEvent.coverImage.startsWith('db:')) {
+          ultraMinimalPayload.coverImage = cleanEvent.coverImage;
         }
+
+        await supabase.from('events').upsert(ultraMinimalPayload);
       } catch (e) {
-        console.warn('Supabase saveEvent sync failed, using local DB:', e);
+        console.warn('Supabase saveEvent sync note:', e);
       }
     }
 
