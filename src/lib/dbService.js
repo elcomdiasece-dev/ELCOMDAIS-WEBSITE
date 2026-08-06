@@ -224,7 +224,7 @@ export const dbService = {
     // 2. Sync to Supabase in the background if connected
     if (supabase) {
       try {
-        const corePayload = {
+        const fullPayload = {
           id: cleanEvent.id,
           title: cleanEvent.title || '',
           type: cleanEvent.type || 'Workshop',
@@ -241,8 +241,6 @@ export const dbService = {
           updatedAt: cleanEvent.updatedAt || new Date().toISOString()
         };
 
-        // First try upserting with extra optional fields
-        const fullPayload = { ...corePayload };
         if (cleanEvent.faq) fullPayload.faq = cleanEvent.faq;
         if (cleanEvent.formFields) fullPayload.formFields = cleanEvent.formFields;
         if (cleanEvent.prerequisites) fullPayload.prerequisites = cleanEvent.prerequisites;
@@ -251,12 +249,23 @@ export const dbService = {
           .from('events')
           .upsert(fullPayload);
 
-        // If error occurs due to unknown columns (like bannerPosition or prerequisites), retry with standard core columns
+        // If error occurs due to unknown columns (like capacity or bannerPosition), retry with minimal schema
         if (error) {
-          console.warn('Supabase full payload upsert note (retrying with core schema):', error.message || error);
-          const retry = await supabase.from('events').upsert(corePayload);
+          console.warn('Supabase full payload upsert note (retrying with minimal schema):', error.message || error);
+          const minimalPayload = {
+            id: cleanEvent.id,
+            title: cleanEvent.title || '',
+            type: cleanEvent.type || 'Workshop',
+            startDate: cleanEvent.startDate || null,
+            endDate: cleanEvent.endDate || null,
+            venue: cleanEvent.venue || '',
+            coverImage: cleanEvent.coverImage || '',
+            description: cleanEvent.description || '',
+            slug: cleanEvent.slug || ''
+          };
+          const retry = await supabase.from('events').upsert(minimalPayload);
           if (retry.error) {
-            console.warn('Supabase core saveEvent note:', retry.error.message || retry.error);
+            console.warn('Supabase minimal saveEvent note:', retry.error.message || retry.error);
           }
         }
       } catch (e) {
