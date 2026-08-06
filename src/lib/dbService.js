@@ -594,7 +594,7 @@ export const dbService = {
           .select('value')
           .eq('key', 'committee')
           .maybeSingle();
-        if (!error && data) rawData = JSON.parse(data.value);
+        if (!error && data && data.value) rawData = JSON.parse(data.value);
       } catch (e) {
         console.warn('Supabase getCommittee failed, falling back to local DB', e);
       }
@@ -608,14 +608,16 @@ export const dbService = {
     const restoreNode = async (node, id) => {
       if (node.image && node.image.startsWith('db:')) {
         const key = node.image.replace('db:', '');
-        node.image = await getDBImage(key);
+        const dbImg = await getDBImage(key);
+        if (dbImg) node.image = dbImg;
       }
       if (node.members) {
         for (let i = 0; i < node.members.length; i++) {
           const sub = node.members[i];
           if (sub.image && sub.image.startsWith('db:')) {
             const key = sub.image.replace('db:', '');
-            sub.image = await getDBImage(key);
+            const dbImg = await getDBImage(key);
+            if (dbImg) sub.image = dbImg;
           }
         }
       }
@@ -637,23 +639,7 @@ export const dbService = {
   async saveCommittee(committeeData) {
     const cleanData = JSON.parse(JSON.stringify(committeeData));
 
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('settings')
-          .upsert({ key: 'committee', value: JSON.stringify(cleanData), updatedAt: new Date().toISOString() })
-          .select()
-          .single();
-        if (!error && data) {
-          localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
-          return JSON.parse(data.value);
-        }
-      } catch (e) {
-        console.warn('Supabase saveCommittee failed, falling back to local DB', e);
-      }
-    }
-
-    // Local DB fallback mode (when Supabase is offline/not configured)
+    // 1. ALWAYS process IndexedDB images and save to localStorage first
     const processNode = async (node, id) => {
       if (node.image && node.image.startsWith('data:')) {
         await saveDBImage(id, node.image);
@@ -682,7 +668,22 @@ export const dbService = {
     }
 
     localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
-    return committeeData;
+
+    // 2. Sync cleanData with full base64 images to Supabase settings table if present
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('settings')
+          .upsert({ key: 'committee', value: JSON.stringify(committeeData), updatedAt: new Date().toISOString() });
+        if (error) {
+          console.warn('Supabase saveCommittee note:', error.message || error);
+        }
+      } catch (e) {
+        console.warn('Supabase saveCommittee sync failed, using local DB:', e);
+      }
+    }
+
+    return cleanData;
   },
 
   // --- AUTHENTICATION ---
