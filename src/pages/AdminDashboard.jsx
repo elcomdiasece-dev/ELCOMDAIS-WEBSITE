@@ -159,9 +159,118 @@ export default function AdminDashboard() {
   const [eventSuccess, setEventSuccess] = useState(false);
   const [commSuccess, setCommSuccess] = useState(false);
 
+  // Migration states
+  const [migrating, setMigrating] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState('');
+
+  const checkHasLocalData = () => {
+    try {
+      const localEvts = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+      const localAlbs = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
+      const localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+      const localComm = JSON.parse(localStorage.getItem('elcomdais_committee') || 'null');
+      return localEvts.length > 0 || localAlbs.length > 0 || localRegs.length > 0 || localComm !== null;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const handleMigrateLocalToSupabase = async () => {
+    if (!window.confirm("This will copy all events, registrations, photo albums, and committee details from your browser's local storage to the Supabase database. Do you want to proceed?")) {
+      return;
+    }
+    setMigrating(true);
+    setMigrationStatus('Starting migration...');
+    try {
+      // 1. Migrate Committee
+      const localComm = JSON.parse(localStorage.getItem('elcomdais_committee') || 'null');
+      if (localComm) {
+        setMigrationStatus('Migrating committee details...');
+        await dbService.saveCommittee(localComm);
+      }
+
+      // 2. Migrate Events
+      const localEvts = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+      if (localEvts.length > 0) {
+        setMigrationStatus(`Migrating ${localEvts.length} events...`);
+        for (const evt of localEvts) {
+          if (evt.coverImage && evt.coverImage.startsWith('db:')) {
+            const key = evt.coverImage.replace('db:', '');
+            const rawBase64 = await new Promise((resolve) => {
+              const request = indexedDB.open('elcomdais_blob_db', 2);
+              request.onsuccess = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('committee_images')) {
+                  resolve('');
+                  return;
+                }
+                const transaction = db.transaction('committee_images', 'readonly');
+                const store = transaction.objectStore('committee_images');
+                const req = store.get(key);
+                req.onsuccess = () => resolve(req.result || '');
+                req.onerror = () => resolve('');
+              };
+              request.onerror = () => resolve('');
+            });
+            if (rawBase64) {
+              evt.coverImage = rawBase64;
+            }
+          }
+          await dbService.saveEvent(evt);
+        }
+      }
+
+      // 3. Migrate Registrations
+      const localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+      if (localRegs.length > 0) {
+        setMigrationStatus(`Migrating ${localRegs.length} registrations...`);
+        for (const reg of localRegs) {
+          await dbService.registerForEvent(reg.eventId, JSON.parse(reg.data));
+        }
+      }
+
+      // 4. Migrate Albums
+      const localAlbs = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
+      if (localAlbs.length > 0) {
+        setMigrationStatus(`Migrating ${localAlbs.length} photo albums...`);
+        for (const alb of localAlbs) {
+          const imgs = await new Promise((resolve) => {
+            const request = indexedDB.open('elcomdais_blob_db', 2);
+            request.onsuccess = (e) => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains('gallery_images')) {
+                resolve([]);
+                return;
+              }
+              const transaction = db.transaction('gallery_images', 'readonly');
+              const store = transaction.objectStore('gallery_images');
+              const index = store.index('albumId');
+              const req = index.getAll(alb.id);
+              req.onsuccess = () => resolve(req.result || []);
+              req.onerror = () => resolve([]);
+            };
+            request.onerror = () => resolve([]);
+          });
+          const imageUrls = imgs.map(i => i.url);
+          await dbService.createAlbum(alb, imageUrls);
+        }
+      }
+
+      setMigrationStatus('Migration complete!');
+      alert('Local data successfully migrated to Supabase! Refreshing dashboard...');
+      loadDashboardData();
+    } catch (err) {
+      console.error('Migration failed:', err);
+      setMigrationStatus(`Migration failed: ${err.message}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   useEffect(() => {
     loadDashboardData();
   }, []);
+
 
   async function loadDashboardData() {
     setLoading(true);
@@ -753,6 +862,26 @@ export default function AdminDashboard() {
                       <span style={{ fontSize: '0.75rem', color: 'var(--primary-cyan)' }}>Albums in gallery</span>
                     </div>
                   </div>
+
+                  {/* Migration Sync tool */}
+                  {checkHasLocalData() && import.meta.env.VITE_SUPABASE_URL && (
+                    <div className="card" style={{ backgroundColor: 'rgba(16, 185, 129, 0.03)', borderColor: '#10b981', marginBottom: '30px', padding: '20px' }}>
+                      <h4 style={{ color: 'var(--text-main)', fontSize: '1rem', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Cpu size={18} color="#10b981" /> Sync Local Sandbox Data to Supabase
+                      </h4>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '15px' }}>
+                        We detected sandbox data stored in this browser's local cache. Since you've successfully connected your Supabase cloud database, you can push all local events, registrations, photo albums, and committee details to your cloud tables.
+                      </p>
+                      <button 
+                        onClick={handleMigrateLocalToSupabase} 
+                        disabled={migrating}
+                        className="btn btn-primary" 
+                        style={{ backgroundColor: '#10b981', borderColor: '#10b981', color: '#fff', fontSize: '0.85rem', padding: '8px 16px', borderRadius: '6px' }}
+                      >
+                        {migrating ? migrationStatus : 'Migrate Local Data to Cloud'}
+                      </button>
+                    </div>
+                  )}
 
                   {/* System Guidelines Info */}
                   <div className="card" style={{ backgroundColor: 'rgba(2, 132, 199, 0.02)', borderLeft: '4px solid var(--primary-cyan)' }}>
