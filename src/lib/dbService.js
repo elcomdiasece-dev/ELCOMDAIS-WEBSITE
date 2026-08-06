@@ -156,7 +156,7 @@ export const dbService = {
           .from('events')
           .select('*')
           .eq('slug', slug)
-          .single();
+          .maybeSingle();
         if (!error && data) evt = data;
       } catch (e) {
         console.warn(`Supabase getEventBySlug (${slug}) failed, falling back to local DB`, e);
@@ -559,7 +559,7 @@ export const dbService = {
           .from('settings')
           .select('value')
           .eq('key', 'committee')
-          .single();
+          .maybeSingle();
         if (!error && data) rawData = JSON.parse(data.value);
       } catch (e) {
         console.warn('Supabase getCommittee failed, falling back to local DB', e);
