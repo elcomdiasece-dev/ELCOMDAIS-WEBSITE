@@ -274,16 +274,7 @@ export const dbService = {
   },
 
   async deleteEvent(id) {
-    if (supabase) {
-      try {
-        await supabase.from('events').delete().eq('id', id);
-        await supabase.from('registrations').delete().eq('eventId', id);
-        return true;
-      } catch (e) {
-        console.warn('Supabase deleteEvent failed, falling back to local DB', e);
-      }
-    }
-
+    // 1. ALWAYS remove from local storage
     const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
     const filtered = events.filter(e => e.id !== id);
     localStorage.setItem('elcomdais_events', JSON.stringify(filtered));
@@ -291,6 +282,16 @@ export const dbService = {
     const regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
     const filteredRegs = regs.filter(r => r.eventId !== id);
     localStorage.setItem('elcomdais_registrations', JSON.stringify(filteredRegs));
+
+    // 2. Delete from Supabase in background
+    if (supabase) {
+      try {
+        await supabase.from('events').delete().eq('id', id);
+        await supabase.from('registrations').delete().eq('eventId', id);
+      } catch (e) {
+        console.warn('Supabase deleteEvent sync failed:', e);
+      }
+    }
 
     return true;
   },
@@ -368,18 +369,20 @@ export const dbService = {
   },
 
   async deleteRegistration(id) {
-    if (supabase) {
-      try {
-        await supabase.from('registrations').delete().eq('id', id);
-        return true;
-      } catch (e) {
-        console.warn('Supabase deleteRegistration failed, falling back to local DB', e);
-      }
-    }
-
+    // 1. ALWAYS remove from local storage
     const regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
     const filtered = regs.filter(r => r.id !== id);
     localStorage.setItem('elcomdais_registrations', JSON.stringify(filtered));
+
+    // 2. Delete from Supabase in background
+    if (supabase) {
+      try {
+        await supabase.from('registrations').delete().eq('id', id);
+      } catch (e) {
+        console.warn('Supabase deleteRegistration sync failed:', e);
+      }
+    }
+
     return true;
   },
 
@@ -581,16 +584,7 @@ export const dbService = {
   },
 
   async deleteAlbum(albumId) {
-    if (supabase) {
-      try {
-        await supabase.from('albums').delete().eq('id', albumId);
-        await supabase.from('images').delete().eq('albumId', albumId);
-        return true;
-      } catch (e) {
-        console.warn('Supabase deleteAlbum failed, falling back to local DB', e);
-      }
-    }
-
+    // 1. ALWAYS delete from local storage & IndexedDB
     const albums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
     const filteredAlbs = albums.filter(a => a.id !== albumId);
     localStorage.setItem('elcomdais_albums', JSON.stringify(filteredAlbs));
@@ -608,6 +602,16 @@ export const dbService = {
       };
     } catch (err) {
       console.error('Error deleting gallery images from IndexedDB:', err);
+    }
+
+    // 2. Delete from Supabase in background
+    if (supabase) {
+      try {
+        await supabase.from('albums').delete().eq('id', albumId);
+        await supabase.from('images').delete().eq('albumId', albumId);
+      } catch (e) {
+        console.warn('Supabase deleteAlbum sync failed:', e);
+      }
     }
 
     return true;
