@@ -675,7 +675,7 @@ export const dbService = {
     }
     if (!rawData) return null;
 
-    // Restore IndexedDB 'db:' image keys if local fallback, else keep portable base64/HTTP image
+    // Clean up any legacy IndexedDB 'db:' image keys if found
     const restoreNode = async (node, id) => {
       if (node.image && node.image.startsWith('db:')) {
         const key = node.image.replace('db:', '');
@@ -709,46 +709,34 @@ export const dbService = {
 
   async saveCommittee(committeeData) {
     const cleanData = JSON.parse(JSON.stringify(committeeData));
-    const portableData = JSON.parse(JSON.stringify(committeeData));
 
-    // Store images in IndexedDB locally for quota savings, but ensure portableData contains full portable base64 / HTTP images for cloud sync
-    const processNode = async (node, id, portableNode) => {
-      if (node.image && node.image.startsWith('data:')) {
-        await saveDBImage(id, node.image);
-        node.image = `db:${id}`;
-        // portableNode.image remains the full data: base64 string for Supabase cloud sync!
-      } else if (node.image && node.image.startsWith('db:')) {
+    // Resolve any legacy db: keys to base64 if available in IndexedDB
+    const processNode = async (node, id) => {
+      if (node.image && node.image.startsWith('db:')) {
         const key = node.image.replace('db:', '');
         const dbImg = await getDBImage(key);
-        if (dbImg && portableNode) portableNode.image = dbImg;
+        node.image = dbImg || '';
       }
-
       if (node.members) {
         for (let i = 0; i < node.members.length; i++) {
           const sub = node.members[i];
-          const portableSub = portableNode.members ? portableNode.members[i] : null;
-          if (sub.image && sub.image.startsWith('data:')) {
-            const subId = `${id}_sub_${i}`;
-            await saveDBImage(subId, sub.image);
-            sub.image = `db:${subId}`;
-            // portableSub.image remains the full data: base64 string for Supabase cloud sync!
-          } else if (sub.image && sub.image.startsWith('db:')) {
+          if (sub.image && sub.image.startsWith('db:')) {
             const key = sub.image.replace('db:', '');
             const dbImg = await getDBImage(key);
-            if (dbImg && portableSub) portableSub.image = dbImg;
+            sub.image = dbImg || '';
           }
         }
       }
     };
 
     for (let i = 0; i < cleanData.faculty.length; i++) {
-      await processNode(cleanData.faculty[i], `faculty_${i}`, portableData.faculty[i]);
+      await processNode(cleanData.faculty[i], `faculty_${i}`);
     }
     for (let i = 0; i < cleanData.presidents.length; i++) {
-      await processNode(cleanData.presidents[i], `presidents_${i}`, portableData.presidents[i]);
+      await processNode(cleanData.presidents[i], `presidents_${i}`);
     }
     for (let i = 0; i < cleanData.core.length; i++) {
-      await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`, portableData.core[i]);
+      await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`);
     }
 
     try {
@@ -757,12 +745,12 @@ export const dbService = {
       console.warn('localStorage quota note for committee details:', e);
     }
 
-    // Sync full portableData (with real portable base64/HTTP image URLs!) to Supabase settings table
+    // Sync cleanData (with real portable base64/HTTP image URLs!) directly to Supabase settings table
     if (supabase) {
       try {
         const { error } = await supabase
           .from('settings')
-          .upsert({ key: 'committee', value: JSON.stringify(portableData), updatedAt: new Date().toISOString() });
+          .upsert({ key: 'committee', value: JSON.stringify(cleanData), updatedAt: new Date().toISOString() });
         if (error) {
           console.warn('Supabase saveCommittee note:', error.message || error);
         }
@@ -771,7 +759,7 @@ export const dbService = {
       }
     }
 
-    return portableData;
+    return cleanData;
   },
 
   // --- AUTHENTICATION ---
