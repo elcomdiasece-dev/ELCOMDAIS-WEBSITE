@@ -175,6 +175,25 @@ export default function AdminDashboard() {
     }
   };
 
+  const getLocalAdminsList = () => {
+    try {
+      const admins1 = JSON.parse(localStorage.getItem('elcomdais_admins') || '[]');
+      const admins2 = JSON.parse(localStorage.getItem('elcomdias_admins') || '[]');
+      const combined = [...admins1, ...admins2];
+      const unique = [];
+      const seen = new Set();
+      for (const a of combined) {
+        if (a && a.username && !seen.has(a.username.toLowerCase())) {
+          seen.add(a.username.toLowerCase());
+          unique.push(a);
+        }
+      }
+      return unique;
+    } catch (e) {
+      return [];
+    }
+  };
+
   const handleMigrateLocalToSupabase = async () => {
     if (!window.confirm("This will copy all events, registrations, photo albums, and committee details from your browser's local storage to the Supabase database. Do you want to proceed?")) {
       return;
@@ -882,6 +901,37 @@ export default function AdminDashboard() {
                       </button>
                     </div>
                   )}
+
+                  {/* Local Browser Admin Accounts list */}
+                  <div className="card" style={{ marginBottom: '30px', padding: '20px', backgroundColor: 'rgba(0,0,0,0.01)' }}>
+                    <h4 style={{ color: 'var(--text-main)', fontSize: '1rem', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Users size={18} color="var(--primary-cyan)" /> Local Browser Admin Accounts ({getLocalAdminsList().length})
+                    </h4>
+                    {getLocalAdminsList().length > 0 ? (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
+                              <th style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>Name</th>
+                              <th style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>Username / Email</th>
+                              <th style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>Password</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getLocalAdminsList().map((adm, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{adm.name || 'Admin'}</td>
+                                <td style={{ padding: '8px 12px', color: 'var(--primary-cyan)' }}>{adm.username}</td>
+                                <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{adm.password || '••••••••'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No local admin accounts found in browser storage.</p>
+                    )}
+                  </div>
 
                   {/* System Guidelines Info */}
                   <div className="card" style={{ backgroundColor: 'rgba(2, 132, 199, 0.02)', borderLeft: '4px solid var(--primary-cyan)' }}>
