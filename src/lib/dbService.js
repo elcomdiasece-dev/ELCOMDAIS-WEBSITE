@@ -155,6 +155,8 @@ export const dbService = {
 
     for (let i = 0; i < rawEvents.length; i++) {
       const evt = rawEvents[i];
+      if (!evt.type) evt.type = 'Workshop';
+      if (evt.isPublished === undefined || evt.isPublished === null) evt.isPublished = true;
       if (evt.coverImage && evt.coverImage.startsWith('db:')) {
         const key = evt.coverImage.replace('db:', '');
         const dbImg = await getDBImage(key);
@@ -249,23 +251,25 @@ export const dbService = {
           .from('events')
           .upsert(fullPayload);
 
-        // If error occurs due to unknown columns (like capacity or bannerPosition), retry with minimal schema
+        // If error occurs due to unknown columns (like type or capacity or bannerPosition), retry with ultra-minimal schema
         if (error) {
-          console.warn('Supabase full payload upsert note (retrying with minimal schema):', error.message || error);
-          const minimalPayload = {
+          console.warn('Supabase full payload upsert note (retrying with ultra-minimal schema):', error.message || error);
+          const ultraMinimalPayload = {
             id: cleanEvent.id,
             title: cleanEvent.title || '',
-            type: cleanEvent.type || 'Workshop',
-            startDate: cleanEvent.startDate || null,
-            endDate: cleanEvent.endDate || null,
-            venue: cleanEvent.venue || '',
-            coverImage: cleanEvent.coverImage || '',
             description: cleanEvent.description || '',
+            venue: cleanEvent.venue || '',
             slug: cleanEvent.slug || ''
           };
-          const retry = await supabase.from('events').upsert(minimalPayload);
+          if (cleanEvent.startDate) ultraMinimalPayload.startDate = cleanEvent.startDate;
+          if (cleanEvent.endDate) ultraMinimalPayload.endDate = cleanEvent.endDate;
+          if (cleanEvent.coverImage && !cleanEvent.coverImage.startsWith('db:')) {
+            ultraMinimalPayload.coverImage = cleanEvent.coverImage;
+          }
+
+          const retry = await supabase.from('events').upsert(ultraMinimalPayload);
           if (retry.error) {
-            console.warn('Supabase minimal saveEvent note:', retry.error.message || retry.error);
+            console.warn('Supabase ultra-minimal saveEvent note:', retry.error.message || retry.error);
           }
         }
       } catch (e) {
