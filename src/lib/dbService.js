@@ -336,18 +336,65 @@ export const dbService = {
 
   // --- REGISTRATIONS ---
   async getRegistrations() {
+    let remoteRegs = [];
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        // 1. Try fetching from settings table cloud store (key: 'registrations')
+        const { data: settingsData } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'registrations')
+          .maybeSingle();
+
+        if (settingsData && settingsData.value) {
+          try {
+            remoteRegs = JSON.parse(settingsData.value);
+          } catch (e) {
+            console.warn('Error parsing registrations settings JSON:', e);
+          }
+        }
+
+        // 2. Fallback / merge with registrations direct table
+        const { data: tableData, error } = await supabase
           .from('registrations')
           .select('*')
           .order('registeredAt', { ascending: false });
-        if (!error && data) return data;
+
+        if (!error && tableData && tableData.length > 0) {
+          const remoteIds = new Set(remoteRegs.map(r => r.id));
+          for (const item of tableData) {
+            if (!remoteIds.has(item.id)) remoteRegs.push(item);
+          }
+        }
       } catch (e) {
         console.warn('Supabase getRegistrations failed, falling back to local DB', e);
       }
     }
-    return JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+
+    // 3. Merge with local storage registrations so nothing is ever lost
+    const localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+    const existingIds = new Set(remoteRegs.map(r => r.id));
+    let hasNewLocal = false;
+
+    for (const loc of localRegs) {
+      if (!existingIds.has(loc.id)) {
+        remoteRegs.push(loc);
+        hasNewLocal = true;
+      }
+    }
+
+    // If local items were missing from remote, sync them to Supabase settings in background
+    if (hasNewLocal && supabase) {
+      try {
+        await supabase
+          .from('settings')
+          .upsert({ key: 'registrations', value: JSON.stringify(remoteRegs), updatedAt: new Date().toISOString() });
+      } catch (e) {
+        console.warn('Background sync of local registrations to settings failed:', e);
+      }
+    }
+
+    return remoteRegs;
   },
 
   async registerUser(eventId, formData) {
@@ -362,63 +409,103 @@ export const dbService = {
       registeredAt: new Date().toISOString()
     };
 
+    // 1. ALWAYS save locally first
+    let localRegs = [];
+    try {
+      localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+    } catch (e) {
+      localRegs = [];
+    }
+    localRegs.unshift(newReg);
+    try {
+      localStorage.setItem('elcomdais_registrations', JSON.stringify(localRegs));
+    } catch (e) {
+      console.warn('localStorage quota note for registrations:', e);
+    }
+
+    // 2. Try direct Supabase table insert
     if (supabase) {
       try {
-        const { data, error } = await supabase
-          .from('registrations')
-          .insert(newReg)
-          .select()
-          .single();
-        if (!error && data) return data;
+        await supabase.from('registrations').insert(newReg);
       } catch (e) {
-        console.warn('Supabase registerForEvent failed, falling back to local DB', e);
+        console.warn('Supabase direct registrations table insert note:', e);
+      }
+
+      // 3. Cloud sync to settings table (key: 'registrations') as guaranteed backup
+      try {
+        const allRegs = await this.getRegistrations();
+        const exists = allRegs.some(r => r.id === newReg.id);
+        if (!exists) allRegs.unshift(newReg);
+        await supabase
+          .from('settings')
+          .upsert({ key: 'registrations', value: JSON.stringify(allRegs), updatedAt: new Date().toISOString() });
+      } catch (e) {
+        console.warn('Supabase settings registrations backup sync note:', e);
       }
     }
 
-    const regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
-    regs.push(newReg);
-    localStorage.setItem('elcomdais_registrations', JSON.stringify(regs));
     return newReg;
   },
 
   async saveRegistration(id, updatedData) {
     const regString = JSON.stringify(updatedData);
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('registrations')
-          .update({ data: regString })
-          .eq('id', id)
-          .select()
-          .single();
-        if (!error && data) return data;
-      } catch (e) {
-        console.warn('Supabase saveRegistration failed, falling back to local DB', e);
-      }
+    let allRegs = [];
+    try {
+      allRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+    } catch (e) {
+      allRegs = [];
     }
 
-    const regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
-    const idx = regs.findIndex(r => r.id === id);
+    const idx = allRegs.findIndex(r => r.id === id);
     if (idx !== -1) {
-      regs[idx].data = regString;
-      localStorage.setItem('elcomdais_registrations', JSON.stringify(regs));
+      allRegs[idx].data = regString;
+      try {
+        localStorage.setItem('elcomdais_registrations', JSON.stringify(allRegs));
+      } catch (e) {}
     }
+
+    if (supabase) {
+      try {
+        await supabase.from('registrations').update({ data: regString }).eq('id', id);
+      } catch (e) {}
+      try {
+        const fullList = await this.getRegistrations();
+        const fIdx = fullList.findIndex(r => r.id === id);
+        if (fIdx !== -1) fullList[fIdx].data = regString;
+        await supabase
+          .from('settings')
+          .upsert({ key: 'registrations', value: JSON.stringify(fullList), updatedAt: new Date().toISOString() });
+      } catch (e) {}
+    }
+
     return true;
   },
 
   async deleteRegistration(id) {
     // 1. ALWAYS remove from local storage
-    const regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+    let regs = [];
+    try {
+      regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+    } catch (e) {
+      regs = [];
+    }
     const filtered = regs.filter(r => r.id !== id);
-    localStorage.setItem('elcomdais_registrations', JSON.stringify(filtered));
+    try {
+      localStorage.setItem('elcomdais_registrations', JSON.stringify(filtered));
+    } catch (e) {}
 
     // 2. Delete from Supabase in background
     if (supabase) {
       try {
         await supabase.from('registrations').delete().eq('id', id);
-      } catch (e) {
-        console.warn('Supabase deleteRegistration sync failed:', e);
-      }
+      } catch (e) {}
+      try {
+        const fullList = await this.getRegistrations();
+        const remaining = fullList.filter(r => r.id !== id);
+        await supabase
+          .from('settings')
+          .upsert({ key: 'registrations', value: JSON.stringify(remaining), updatedAt: new Date().toISOString() });
+      } catch (e) {}
     }
 
     return true;

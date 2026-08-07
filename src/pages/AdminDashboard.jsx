@@ -542,8 +542,8 @@ export default function AdminDashboard() {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 500;
-        const MAX_HEIGHT = 500;
+        const MAX_WIDTH = 250;
+        const MAX_HEIGHT = 250;
         let width = img.width;
         let height = img.height;
 
@@ -566,8 +566,8 @@ export default function AdminDashboard() {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Export as JPEG with 80% optimized quality (~25KB each)
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+        // Export as JPEG with 70% optimized quality (~12KB each)
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
         callback(compressedBase64);
       };
       img.src = event.target.result;
