@@ -162,60 +162,43 @@ const initLocalDb = () => {
 
 initLocalDb();
 
+// --- GLOBAL MEMORY CACHE ---
+const memCache = {
+  events: null,
+  committee: null,
+  albums: null,
+  registrations: null,
+  albumImages: {} // keyed by albumId
+};
+
+// Helper to restore legacy/IndexedDB images
+const restoreNode = async (node, id) => {
+  if (node.image && node.image.startsWith('db:')) {
+    const key = node.image.replace('db:', '');
+    const dbImg = await getDBImage(key);
+    node.image = dbImg || '';
+  }
+  if (node.members) {
+    for (let i = 0; i < node.members.length; i++) {
+      const sub = node.members[i];
+      if (sub.image && sub.image.startsWith('db:')) {
+        const key = sub.image.replace('db:', '');
+        const dbImg = await getDBImage(key);
+        sub.image = dbImg || '';
+      }
+    }
+  }
+};
+
 export const dbService = {
   // --- EVENTS ---
   async getEvents() {
-    let remoteEvents = null;
-    if (supabase) {
-      try {
-        // 1. Try fetching from settings cloud store (guaranteed 100% schema compatibility)
-        const { data: settingsData } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'events')
-          .maybeSingle();
-
-        if (settingsData && settingsData.value) {
-          try {
-            remoteEvents = JSON.parse(settingsData.value);
-          } catch (err) {
-            console.warn('Error parsing events settings JSON:', err);
-          }
-        }
-
-        // 2. Fallback to direct events table if settings store was empty
-        if (!remoteEvents || remoteEvents.length === 0) {
-          const { data, error } = await supabase
-            .from('events')
-            .select('*');
-          if (!error && data && data.length > 0) {
-            remoteEvents = data;
-          }
-        }
-      } catch (e) {
-        console.warn('Supabase getEvents failed, falling back to local DB', e);
-      }
+    if (memCache.events) {
+      return memCache.events;
     }
 
     const localEvents = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
-    let rawEvents = [];
-
-    if (remoteEvents && remoteEvents.length > 0) {
-      rawEvents = [...remoteEvents];
-      const remoteIds = new Set(remoteEvents.map(e => e.id));
-      for (const loc of localEvents) {
-        if (!remoteIds.has(loc.id)) {
-          rawEvents.push(loc);
-        }
-      }
-    } else {
-      rawEvents = localEvents;
-    }
-
-    // Fallback to seed events if no events exist in remote or local
-    if (!rawEvents || rawEvents.length === 0) {
-      rawEvents = [...SEED_EVENTS];
-    }
+    let rawEvents = localEvents.length > 0 ? localEvents : [...SEED_EVENTS];
 
     for (let i = 0; i < rawEvents.length; i++) {
       const evt = rawEvents[i];
@@ -227,7 +210,58 @@ export const dbService = {
         if (dbImg) evt.coverImage = dbImg;
       }
     }
+
+    // Set cache to local data initially so first render resolves in 0ms
+    memCache.events = rawEvents;
+
+    // Trigger background sync with Supabase (stale-while-revalidate)
+    this._syncEventsBackground().catch(err => console.warn('Background events sync failed:', err));
+
     return rawEvents;
+  },
+
+  async _syncEventsBackground() {
+    if (!supabase) return;
+    try {
+      let remoteEvents = null;
+      const { data: settingsData } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'events')
+        .maybeSingle();
+
+      if (settingsData && settingsData.value) {
+        try {
+          remoteEvents = JSON.parse(settingsData.value);
+        } catch (err) {}
+      }
+
+      if (!remoteEvents || remoteEvents.length === 0) {
+        const { data, error } = await supabase.from('events').select('*');
+        if (!error && data && data.length > 0) {
+          remoteEvents = data;
+        }
+      }
+
+      if (remoteEvents && remoteEvents.length > 0) {
+        for (let i = 0; i < remoteEvents.length; i++) {
+          const evt = remoteEvents[i];
+          if (!evt.type) evt.type = 'Workshop';
+          if (evt.isPublished === undefined || evt.isPublished === null) evt.isPublished = true;
+          if (evt.coverImage && evt.coverImage.startsWith('db:')) {
+            const key = evt.coverImage.replace('db:', '');
+            const dbImg = await getDBImage(key);
+            if (dbImg) evt.coverImage = dbImg;
+          }
+        }
+        memCache.events = remoteEvents;
+        try {
+          localStorage.setItem('elcomdais_events', JSON.stringify(remoteEvents));
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.warn('Background sync failed:', e);
+    }
   },
 
   async getEventBySlug(slug) {
@@ -240,6 +274,7 @@ export const dbService = {
   },
 
   async saveEvent(eventData) {
+    memCache.events = null;
     const slug = eventData.slug || eventData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const cleanEvent = {
       ...eventData,
@@ -308,6 +343,7 @@ export const dbService = {
   },
 
   async deleteEvent(id) {
+    memCache.events = null;
     // 1. ALWAYS remove from local storage
     const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
     const filtered = events.filter(e => e.id !== id);
@@ -336,72 +372,75 @@ export const dbService = {
 
   // --- REGISTRATIONS ---
   async getRegistrations() {
-    let remoteRegs = [];
-    if (supabase) {
-      try {
-        // 1. Try fetching from settings table cloud store (key: 'registrations')
-        const { data: settingsData } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'registrations')
-          .maybeSingle();
-
-        if (settingsData && settingsData.value) {
-          try {
-            remoteRegs = JSON.parse(settingsData.value);
-          } catch (e) {
-            console.warn('Error parsing registrations settings JSON:', e);
-          }
-        }
-
-        // 2. Fallback / merge with registrations direct table
-        const { data: tableData, error } = await supabase
-          .from('registrations')
-          .select('*')
-          .order('registeredAt', { ascending: false });
-
-        if (!error && tableData && tableData.length > 0) {
-          const remoteIds = new Set(remoteRegs.map(r => r.id));
-          for (const item of tableData) {
-            if (!remoteIds.has(item.id)) remoteRegs.push(item);
-          }
-        }
-      } catch (e) {
-        console.warn('Supabase getRegistrations failed, falling back to local DB', e);
-      }
+    if (memCache.registrations) {
+      return memCache.registrations;
     }
 
-    // 3. Merge with local storage registrations so nothing is ever lost
     const localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
-    const existingIds = new Set(remoteRegs.map(r => r.id));
-    let hasNewLocal = false;
+    memCache.registrations = localRegs;
 
-    for (const loc of localRegs) {
-      if (!existingIds.has(loc.id)) {
-        remoteRegs.push(loc);
-        hasNewLocal = true;
+    this._syncRegistrationsBackground().catch(() => {});
+    return localRegs;
+  },
+
+  async _syncRegistrationsBackground() {
+    if (!supabase) return;
+    try {
+      let remoteRegs = [];
+      const { data: settingsData } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'registrations')
+        .maybeSingle();
+
+      if (settingsData && settingsData.value) {
+        try {
+          remoteRegs = JSON.parse(settingsData.value);
+        } catch (e) {}
       }
-    }
 
-    // If local items were missing from remote, sync them to Supabase settings in background
-    if (hasNewLocal && supabase) {
-      try {
+      const { data: tableData, error } = await supabase
+        .from('registrations')
+        .select('*')
+        .order('registeredAt', { ascending: false });
+
+      if (!error && tableData && tableData.length > 0) {
+        const remoteIds = new Set(remoteRegs.map(r => r.id));
+        for (const item of tableData) {
+          if (!remoteIds.has(item.id)) remoteRegs.push(item);
+        }
+      }
+
+      const localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
+      const existingIds = new Set(remoteRegs.map(r => r.id));
+      let hasNewLocal = false;
+
+      for (const loc of localRegs) {
+        if (!existingIds.has(loc.id)) {
+          remoteRegs.push(loc);
+          hasNewLocal = true;
+        }
+      }
+
+      memCache.registrations = remoteRegs;
+
+      if (hasNewLocal) {
         await supabase
           .from('settings')
           .upsert({ key: 'registrations', value: JSON.stringify(remoteRegs), updatedAt: new Date().toISOString() });
-      } catch (e) {
-        console.warn('Background sync of local registrations to settings failed:', e);
       }
+    } catch (e) {
+      console.warn('Background registrations sync failed:', e);
     }
-
-    return remoteRegs;
   },
+
 
   async registerUser(eventId, formData) {
     return this.registerForEvent(eventId, formData);
   },
 
   async registerForEvent(eventId, formData) {
+    memCache.registrations = null;
     const newReg = {
       id: `reg-${Date.now()}`,
       eventId,
@@ -448,6 +487,7 @@ export const dbService = {
   },
 
   async saveRegistration(id, updatedData) {
+    memCache.registrations = null;
     const regString = JSON.stringify(updatedData);
     let allRegs = [];
     try {
@@ -482,6 +522,7 @@ export const dbService = {
   },
 
   async deleteRegistration(id) {
+    memCache.registrations = null;
     // 1. ALWAYS remove from local storage
     let regs = [];
     try {
@@ -511,45 +552,45 @@ export const dbService = {
     return true;
   },
 
-  // --- PHOTO GALLERY ---
   async getAlbums() {
-    let remoteAlbums = null;
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('albums')
-          .select('*')
-          .order('createdAt', { ascending: false });
-        if (!error && data && data.length > 0) remoteAlbums = data;
-      } catch (e) {
-        console.warn('Supabase getAlbums failed, falling back to local DB', e);
-      }
+    if (memCache.albums) {
+      return memCache.albums;
     }
 
     const localAlbums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
-    if (remoteAlbums && remoteAlbums.length > 0) {
-      const remoteIds = new Set(remoteAlbums.map(a => a.id));
-      for (const loc of localAlbums) {
-        if (!remoteIds.has(loc.id)) remoteAlbums.push(loc);
-      }
-      return remoteAlbums;
-    }
+    memCache.albums = localAlbums;
+
+    this._syncAlbumsBackground().catch(() => {});
     return localAlbums;
   },
 
-  async getAlbumImages(albumId) {
-    let remoteImages = null;
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('images')
-          .select('*')
-          .eq('albumId', albumId)
-          .order('id', { ascending: true });
-        if (!error && data && data.length > 0) remoteImages = data;
-      } catch (e) {
-        console.warn(`Supabase getAlbumImages (${albumId}) failed, falling back to IndexedDB`, e);
+  async _syncAlbumsBackground() {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('albums')
+        .select('*')
+        .order('createdAt', { ascending: false });
+
+      if (!error && data) {
+        const localAlbums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
+        const remoteIds = new Set(data.map(a => a.id));
+        for (const loc of localAlbums) {
+          if (!remoteIds.has(loc.id)) data.push(loc);
+        }
+        memCache.albums = data;
+        try {
+          localStorage.setItem('elcomdais_albums', JSON.stringify(data));
+        } catch (e) {}
       }
+    } catch (e) {
+      console.warn('Background sync albums failed:', e);
+    }
+  },
+
+  async getAlbumImages(albumId) {
+    if (memCache.albumImages[albumId]) {
+      return memCache.albumImages[albumId];
     }
 
     let localImages = [];
@@ -567,17 +608,35 @@ export const dbService = {
       console.error('IndexedDB getAlbumImages failed:', err);
     }
 
-    if (remoteImages && remoteImages.length > 0) {
-      const remoteIds = new Set(remoteImages.map(i => i.id));
-      for (const loc of localImages) {
-        if (!remoteIds.has(loc.id)) remoteImages.push(loc);
-      }
-      return remoteImages;
-    }
+    memCache.albumImages[albumId] = localImages;
+
+    this._syncAlbumImagesBackground(albumId, localImages).catch(() => {});
     return localImages;
   },
 
+  async _syncAlbumImagesBackground(albumId, localImages) {
+    if (!supabase) return;
+    try {
+      const { data: remoteImages, error } = await supabase
+        .from('images')
+        .select('*')
+        .eq('albumId', albumId)
+        .order('id', { ascending: true });
+
+      if (!error && remoteImages) {
+        const remoteIds = new Set(remoteImages.map(i => i.id));
+        for (const loc of localImages) {
+          if (!remoteIds.has(loc.id)) remoteImages.push(loc);
+        }
+        memCache.albumImages[albumId] = remoteImages;
+      }
+    } catch (e) {
+      console.warn('Background sync album images failed:', e);
+    }
+  },
+
   async createAlbum(albumData, fileUrls = []) {
+    memCache.albums = null;
     const albumId = albumData.id || `alb-${Date.now()}`;
     const newAlbum = {
       id: albumId,
@@ -638,6 +697,8 @@ export const dbService = {
   },
 
   async saveAlbum(albumId, albumData, fileUrls = []) {
+    memCache.albums = null;
+    delete memCache.albumImages[albumId];
     const updatedAlbum = {
       id: albumId,
       title: albumData.title,
@@ -709,6 +770,8 @@ export const dbService = {
   },
 
   async deleteAlbum(albumId) {
+    memCache.albums = null;
+    delete memCache.albumImages[albumId];
     // 1. ALWAYS delete from local storage & IndexedDB
     const albums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
     const filteredAlbs = albums.filter(a => a.id !== albumId);
@@ -744,57 +807,70 @@ export const dbService = {
 
   // --- COMMITTEE ---
   async getCommittee() {
-    let rawData = null;
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'committee')
-          .maybeSingle();
-        if (!error && data && data.value) rawData = JSON.parse(data.value);
-      } catch (e) {
-        console.warn('Supabase getCommittee failed, falling back to local DB', e);
-      }
+    if (memCache.committee) {
+      return memCache.committee;
     }
-    if (!rawData) {
-      rawData = JSON.parse(localStorage.getItem('elcomdais_committee') || 'null');
-    }
-    if (!rawData) return null;
 
-    // Clean up any legacy IndexedDB 'db:' image keys if found
-    const restoreNode = async (node, id) => {
-      if (node.image && node.image.startsWith('db:')) {
-        const key = node.image.replace('db:', '');
-        const dbImg = await getDBImage(key);
-        node.image = dbImg || '';
+    let rawData = JSON.parse(localStorage.getItem('elcomdais_committee') || 'null');
+    
+    if (rawData) {
+      for (let i = 0; i < rawData.faculty.length; i++) {
+        await restoreNode(rawData.faculty[i], `faculty_${i}`);
       }
-      if (node.members) {
-        for (let i = 0; i < node.members.length; i++) {
-          const sub = node.members[i];
-          if (sub.image && sub.image.startsWith('db:')) {
-            const key = sub.image.replace('db:', '');
-            const dbImg = await getDBImage(key);
-            sub.image = dbImg || '';
-          }
+      for (let i = 0; i < rawData.presidents.length; i++) {
+        await restoreNode(rawData.presidents[i], `presidents_${i}`);
+      }
+      for (let i = 0; i < rawData.core.length; i++) {
+        await restoreNode(rawData.core[i], `core_${rawData.core[i].id}`);
+      }
+      memCache.committee = rawData;
+      
+      // Sync fresh data in the background (stale-while-revalidate)
+      this._syncCommitteeBackground().catch(() => {});
+      return rawData;
+    }
+
+    // No local committee, fetch synchronously
+    await this._syncCommitteeBackground();
+    return memCache.committee;
+  },
+
+  async _syncCommitteeBackground() {
+    if (!supabase) return;
+    try {
+      let rawData = null;
+      const { data, error } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'committee')
+        .maybeSingle();
+
+      if (!error && data && data.value) {
+        rawData = JSON.parse(data.value);
+      }
+
+      if (rawData) {
+        for (let i = 0; i < rawData.faculty.length; i++) {
+          await restoreNode(rawData.faculty[i], `faculty_${i}`);
         }
+        for (let i = 0; i < rawData.presidents.length; i++) {
+          await restoreNode(rawData.presidents[i], `presidents_${i}`);
+        }
+        for (let i = 0; i < rawData.core.length; i++) {
+          await restoreNode(rawData.core[i], `core_${rawData.core[i].id}`);
+        }
+        memCache.committee = rawData;
+        try {
+          localStorage.setItem('elcomdais_committee', JSON.stringify(rawData));
+        } catch (e) {}
       }
-    };
-
-    for (let i = 0; i < rawData.faculty.length; i++) {
-      await restoreNode(rawData.faculty[i], `faculty_${i}`);
+    } catch (e) {
+      console.warn('Background committee sync failed:', e);
     }
-    for (let i = 0; i < rawData.presidents.length; i++) {
-      await restoreNode(rawData.presidents[i], `presidents_${i}`);
-    }
-    for (let i = 0; i < rawData.core.length; i++) {
-      await restoreNode(rawData.core[i], `core_${rawData.core[i].id}`);
-    }
-
-    return rawData;
   },
 
   async saveCommittee(committeeData) {
+    memCache.committee = null;
     const cleanData = JSON.parse(JSON.stringify(committeeData));
 
     // Resolve any legacy db: keys to base64 if available in IndexedDB
