@@ -905,7 +905,29 @@ export const dbService = {
     try {
       localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
     } catch (e) {
-      console.warn('localStorage quota note for committee details:', e);
+      if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+        console.warn('LocalStorage quota limit reached. Clearing obsolete keys...');
+        // Clear obsolete keys with old spelling (elcomdias_)
+        const obsoleteKeys = [
+          'elcomdias_committee',
+          'elcomdias_events',
+          'elcomdias_albums',
+          'elcomdias_images',
+          'elcomdias_registrations',
+          'elcomdias_admins'
+        ];
+        obsoleteKeys.forEach(k => localStorage.removeItem(k));
+        
+        // Attempt retry
+        try {
+          localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
+          console.log('Saved committee successfully after clearing obsolete keys.');
+        } catch (retryErr) {
+          console.error('LocalStorage storage failed even after cleanup:', retryErr);
+        }
+      } else {
+        console.warn('localStorage quota note for committee details:', e);
+      }
     }
 
     // Sync cleanData (with real portable base64/HTTP image URLs!) directly to Supabase settings table
