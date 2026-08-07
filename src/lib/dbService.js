@@ -2,40 +2,51 @@ import { supabase } from './supabaseClient';
 
 // --- INDEXEDDB STORAGE FOR LARGE ASSETS (COMMITTEE & GALLERY IMAGES) ---
 const initIndexedDB = () => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('elcomdais_blob_db', 2);
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-
-      // Store for committee photos
-      if (!db.objectStoreNames.contains('committee_images')) {
-        db.createObjectStore('committee_images');
-      }
-
-      // Store for gallery photos
-      if (!db.objectStoreNames.contains('gallery_images')) {
-        const store = db.createObjectStore('gallery_images', { keyPath: 'id' });
-        store.createIndex('albumId', 'albumId', { unique: false });
-      }
-    };
-    request.onsuccess = (e) => {
-      resolve(e.target.result);
-    };
-    request.onerror = (e) => {
-      reject(e.target.error);
-    };
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open('elcomdais_blob_db', 2);
+      request.onblocked = () => {
+        console.warn('IndexedDB upgrade blocked. Resolving with null.');
+        resolve(null);
+      };
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('committee_images')) {
+          db.createObjectStore('committee_images');
+        }
+        if (!db.objectStoreNames.contains('gallery_images')) {
+          const store = db.createObjectStore('gallery_images', { keyPath: 'id' });
+          store.createIndex('albumId', 'albumId', { unique: false });
+        }
+      };
+      request.onsuccess = (e) => {
+        resolve(e.target.result);
+      };
+      request.onerror = (e) => {
+        console.warn('IndexedDB open error. Resolving with null:', e.target.error);
+        resolve(null);
+      };
+    } catch (err) {
+      console.warn('IndexedDB not supported or blocked. Resolving with null:', err);
+      resolve(null);
+    }
   });
 };
 
 const getDBImage = async (key) => {
   try {
     const db = await initIndexedDB();
+    if (!db) return '';
     return new Promise((resolve) => {
-      const transaction = db.transaction('committee_images', 'readonly');
-      const store = transaction.objectStore('committee_images');
-      const req = store.get(key);
-      req.onsuccess = () => resolve(req.result || '');
-      req.onerror = () => resolve('');
+      try {
+        const transaction = db.transaction('committee_images', 'readonly');
+        const store = transaction.objectStore('committee_images');
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result || '');
+        req.onerror = () => resolve('');
+      } catch (err) {
+        resolve('');
+      }
     });
   } catch (e) {
     console.error('IndexedDB get failed:', e);
@@ -46,12 +57,17 @@ const getDBImage = async (key) => {
 const saveDBImage = async (key, base64) => {
   try {
     const db = await initIndexedDB();
+    if (!db) return;
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction('committee_images', 'readwrite');
-      const store = transaction.objectStore('committee_images');
-      const req = store.put(base64, key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      try {
+        const transaction = db.transaction('committee_images', 'readwrite');
+        const store = transaction.objectStore('committee_images');
+        const req = store.put(base64, key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      } catch (err) {
+        reject(err);
+      }
     });
   } catch (e) {
     console.error('IndexedDB save failed:', e);
@@ -596,14 +612,20 @@ export const dbService = {
     let localImages = [];
     try {
       const db = await initIndexedDB();
-      localImages = await new Promise((resolve) => {
-        const transaction = db.transaction('gallery_images', 'readonly');
-        const store = transaction.objectStore('gallery_images');
-        const index = store.index('albumId');
-        const request = index.getAll(albumId);
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => resolve([]);
-      });
+      if (db) {
+        localImages = await new Promise((resolve) => {
+          try {
+            const transaction = db.transaction('gallery_images', 'readonly');
+            const store = transaction.objectStore('gallery_images');
+            const index = store.index('albumId');
+            const request = index.getAll(albumId);
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => resolve([]);
+          } catch (e) {
+            resolve([]);
+          }
+        });
+      }
     } catch (err) {
       console.error('IndexedDB getAlbumImages failed:', err);
     }
@@ -656,16 +678,18 @@ export const dbService = {
     if (fileUrls.length > 0) {
       try {
         const db = await initIndexedDB();
-        const transaction = db.transaction('gallery_images', 'readwrite');
-        const store = transaction.objectStore('gallery_images');
-        fileUrls.forEach((url, idx) => {
-          store.put({
-            id: `img-${Date.now()}-${idx}`,
-            albumId,
-            url,
-            caption: `Photo from ${newAlbum.title}`
+        if (db) {
+          const transaction = db.transaction('gallery_images', 'readwrite');
+          const store = transaction.objectStore('gallery_images');
+          fileUrls.forEach((url, idx) => {
+            store.put({
+              id: `img-${Date.now()}-${idx}`,
+              albumId,
+              url,
+              caption: `Photo from ${newAlbum.title}`
+            });
           });
-        });
+        }
       } catch (err) {
         console.error('Error saving gallery images to IndexedDB:', err);
       }
@@ -720,29 +744,31 @@ export const dbService = {
     if (fileUrls.length > 0) {
       try {
         const db = await initIndexedDB();
-        const deleteTransaction = db.transaction('gallery_images', 'readwrite');
-        const deleteStore = deleteTransaction.objectStore('gallery_images');
-        const index = deleteStore.index('albumId');
-        const keysRequest = index.getAllKeys(albumId);
+        if (db) {
+          const deleteTransaction = db.transaction('gallery_images', 'readwrite');
+          const deleteStore = deleteTransaction.objectStore('gallery_images');
+          const index = deleteStore.index('albumId');
+          const keysRequest = index.getAllKeys(albumId);
 
-        await new Promise((resolve) => {
-          keysRequest.onsuccess = () => {
-            const keys = keysRequest.result || [];
-            const deletePromises = keys.map(key => deleteStore.delete(key));
-            resolve(Promise.all(deletePromises));
-          };
-        });
-
-        const insertTransaction = db.transaction('gallery_images', 'readwrite');
-        const insertStore = insertTransaction.objectStore('gallery_images');
-        fileUrls.forEach((url, idx) => {
-          insertStore.put({
-            id: `img-${Date.now()}-${idx}`,
-            albumId,
-            url,
-            caption: `Photo from ${updatedAlbum.title}`
+          await new Promise((resolve) => {
+            keysRequest.onsuccess = () => {
+              const keys = keysRequest.result || [];
+              const deletePromises = keys.map(key => deleteStore.delete(key));
+              resolve(Promise.all(deletePromises));
+            };
           });
-        });
+
+          const insertTransaction = db.transaction('gallery_images', 'readwrite');
+          const insertStore = insertTransaction.objectStore('gallery_images');
+          fileUrls.forEach((url, idx) => {
+            insertStore.put({
+              id: `img-${Date.now()}-${idx}`,
+              albumId,
+              url,
+              caption: `Photo from ${updatedAlbum.title}`
+            });
+          });
+        }
       } catch (err) {
         console.error('Error saving album images to IndexedDB:', err);
       }
@@ -779,15 +805,17 @@ export const dbService = {
 
     try {
       const db = await initIndexedDB();
-      const transaction = db.transaction('gallery_images', 'readwrite');
-      const store = transaction.objectStore('gallery_images');
-      const index = store.index('albumId');
-      const keysRequest = index.getAllKeys(albumId);
+      if (db) {
+        const transaction = db.transaction('gallery_images', 'readwrite');
+        const store = transaction.objectStore('gallery_images');
+        const index = store.index('albumId');
+        const keysRequest = index.getAllKeys(albumId);
 
-      keysRequest.onsuccess = () => {
-        const keys = keysRequest.result || [];
-        keys.forEach(key => store.delete(key));
-      };
+        keysRequest.onsuccess = () => {
+          const keys = keysRequest.result || [];
+          keys.forEach(key => store.delete(key));
+        };
+      }
     } catch (err) {
       console.error('Error deleting gallery images from IndexedDB:', err);
     }
