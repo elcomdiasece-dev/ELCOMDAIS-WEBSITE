@@ -119,8 +119,48 @@ const SEED_EVENTS = [
     createdAt: '2026-08-03T00:00:00.000Z'
   }
 ];
-const SEED_ALBUMS = [];
-const SEED_IMAGES = [];
+const SEED_ALBUMS = [
+  {
+    id: 'alb-seed-1',
+    title: 'ELCOMDAIS Inauguration 2026',
+    description: 'Glimpses of the department association inauguration ceremony, keynotes, and student project displays.',
+    coverImage: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=600&q=80',
+    createdAt: '2026-08-01T10:00:00.000Z'
+  },
+  {
+    id: 'alb-seed-2',
+    title: 'National Level Technical Symposium',
+    description: 'Capturing moments from Paper Presentation, Circuit Debugging, and Hardware Hackathon events.',
+    coverImage: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=600&q=80',
+    createdAt: '2026-08-03T11:00:00.000Z'
+  }
+];
+const SEED_IMAGES = [
+  {
+    id: 'img-seed-1-1',
+    albumId: 'alb-seed-1',
+    url: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=600&q=80',
+    caption: 'Inaugural address by the department head'
+  },
+  {
+    id: 'img-seed-1-2',
+    albumId: 'alb-seed-1',
+    url: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=600&q=80',
+    caption: 'Student audience during keynote session'
+  },
+  {
+    id: 'img-seed-2-1',
+    albumId: 'alb-seed-2',
+    url: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=600&q=80',
+    caption: 'Symposium presentation showcase'
+  },
+  {
+    id: 'img-seed-2-2',
+    albumId: 'alb-seed-2',
+    url: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=600&q=80',
+    caption: 'Students debugging embedded boards'
+  }
+];
 const SEED_REGISTRATIONS = [];
 
 // Helper to initialize database in localStorage
@@ -574,10 +614,11 @@ export const dbService = {
     }
 
     const localAlbums = JSON.parse(localStorage.getItem('elcomdais_albums') || '[]');
-    memCache.albums = localAlbums;
+    const albumsList = localAlbums.length > 0 ? localAlbums : [...SEED_ALBUMS];
+    memCache.albums = albumsList;
 
     this._syncAlbumsBackground().catch(() => {});
-    return localAlbums;
+    return albumsList;
   },
 
   async _syncAlbumsBackground() {
@@ -630,10 +671,15 @@ export const dbService = {
       console.error('IndexedDB getAlbumImages failed:', err);
     }
 
-    memCache.albumImages[albumId] = localImages;
+    let imagesList = localImages;
+    if (imagesList.length === 0) {
+      imagesList = SEED_IMAGES.filter(i => i.albumId === albumId);
+    }
 
-    this._syncAlbumImagesBackground(albumId, localImages).catch(() => {});
-    return localImages;
+    memCache.albumImages[albumId] = imagesList;
+
+    this._syncAlbumImagesBackground(albumId, imagesList).catch(() => {});
+    return imagesList;
   },
 
   async _syncAlbumImagesBackground(albumId, localImages) {
