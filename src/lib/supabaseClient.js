@@ -19,8 +19,10 @@ const isValidSupabaseUrl = (str) => {
   return true;
 };
 
-if (!isValidSupabaseUrl(rawUrl)) {
-  console.warn('VITE_SUPABASE_URL is invalid or misconfigured. Falling back to project Supabase URL.');
+if (!rawUrl) {
+  rawUrl = FALLBACK_URL;
+} else if (!isValidSupabaseUrl(rawUrl)) {
+  console.warn('VITE_SUPABASE_URL is invalid. Falling back to project Supabase URL.');
   rawUrl = FALLBACK_URL;
 }
 
@@ -28,8 +30,10 @@ if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
   rawUrl = `https://${rawUrl}`;
 }
 
-if (!rawKey || rawKey.startsWith('http') || rawKey.length < 20) {
-  console.warn('VITE_SUPABASE_ANON_KEY is invalid or missing. Falling back to project Supabase key.');
+if (!rawKey) {
+  rawKey = FALLBACK_KEY;
+} else if (rawKey.startsWith('http') || rawKey.length < 20) {
+  console.warn('VITE_SUPABASE_ANON_KEY is invalid. Falling back to project Supabase key.');
   rawKey = FALLBACK_KEY;
 }
 
