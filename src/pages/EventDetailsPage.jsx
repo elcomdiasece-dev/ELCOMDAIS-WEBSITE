@@ -244,21 +244,48 @@ export default function EventDetailsPage() {
             </Link>
             
             <div>
-              <span style={{
-                display: 'inline-block',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                letterSpacing: '0.1em',
-                padding: '4px 10px',
-                borderRadius: '20px',
-                backgroundColor: 'rgba(56, 189, 248, 0.25)',
-                color: '#38bdf8',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
-                marginBottom: '15px',
-                textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-              }}>
-                {event.type}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '15px' }}>
+                <span style={{
+                  display: 'inline-block',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  backgroundColor: 'rgba(56, 189, 248, 0.25)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+                }}>
+                  {event.type}
+                </span>
+
+                {event.coverImage && (
+                  <a
+                    href={event.coverImage}
+                    download={`${(event.title || 'event').replace(/[^a-z0-9]/gi, '_')}_banner.jpg`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: '4px 12px',
+                      borderRadius: '20px',
+                      backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                      color: '#ffffff',
+                      border: '1px solid rgba(255, 255, 255, 0.25)',
+                      backdropFilter: 'blur(8px)',
+                      textDecoration: 'none',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <Download size={13} color="#38bdf8" /> Download Banner
+                  </a>
+                )}
+              </div>
               <h1 style={{
                 fontSize: 'calc(1.8rem + 1.2vw)',
                 fontWeight: 800,
@@ -434,25 +461,37 @@ export default function EventDetailsPage() {
                 </div>
               )}
 
-              {/* HIGH RESOLUTION POSTER PREVIEW CARD (FOR PAPER PRESENTATION) */}
-              {event.coverImage && (event.title?.toLowerCase().includes('paper presentation') || event.slug?.includes('paper-presentation')) && (
+              {/* HIGH RESOLUTION POSTER / BANNER PREVIEW & DOWNLOAD CARD (FOR ALL EVENTS) */}
+              {event.coverImage && (
                 <div className="card" style={{ padding: '24px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                     <div>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
-                        Official Event Poster
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={20} color="var(--primary-cyan)" /> Official Event Banner & Poster
                       </h3>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>High-resolution flyer with full dates, rules, and track details</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>High-resolution event flyer and schedule</span>
                     </div>
-                    <a
-                      href={event.coverImage}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn btn-secondary"
-                      style={{ padding: '6px 14px', fontSize: '0.82rem', gap: '6px' }}
-                    >
-                      <ExternalLink size={14} /> Open Full Size
-                    </a>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <a
+                        href={event.coverImage}
+                        download={`${(event.title || 'event').replace(/[^a-z0-9]/gi, '_')}_banner.jpg`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-primary"
+                        style={{ padding: '6px 14px', fontSize: '0.82rem', gap: '6px' }}
+                      >
+                        <Download size={14} /> Download Banner
+                      </a>
+                      <a
+                        href={event.coverImage}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-secondary"
+                        style={{ padding: '6px 14px', fontSize: '0.82rem', gap: '6px' }}
+                      >
+                        <ExternalLink size={14} /> Open Full Size
+                      </a>
+                    </div>
                   </div>
                   <div style={{
                     width: '100%',
@@ -467,7 +506,7 @@ export default function EventDetailsPage() {
                   }}>
                     <img
                       src={event.coverImage}
-                      alt="Paper Presentation Official Poster"
+                      alt={`${event.title} Official Banner`}
                       style={{
                         width: '100%',
                         maxWidth: '700px',
@@ -610,6 +649,22 @@ export default function EventDetailsPage() {
                         <span style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-muted)' }}>Secs</span>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Direct Event Banner Download Button */}
+                {event.coverImage && (
+                  <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--border-color)' }}>
+                    <a
+                      href={event.coverImage}
+                      download={`${(event.title || 'event').replace(/[^a-z0-9]/gi, '_')}_banner.jpg`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-secondary"
+                      style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem', gap: '8px', padding: '9px 14px' }}
+                    >
+                      <Download size={15} color="var(--primary-cyan)" /> Download Event Banner
+                    </a>
                   </div>
                 )}
               </div>
