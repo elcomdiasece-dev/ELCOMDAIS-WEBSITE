@@ -300,6 +300,33 @@ export const dbService = {
         const dbImg = await getDBImage(key);
         if (dbImg) evt.coverImage = dbImg;
       }
+
+      // Universal Form Fields Sanitization for all events: remove EEE, ensure Section A, B, C
+      if (evt.formFields) {
+        try {
+          let fields = typeof evt.formFields === 'string' ? JSON.parse(evt.formFields) : evt.formFields;
+          if (Array.isArray(fields)) {
+            fields = fields.map(f => {
+              if (f.id === 'department') return { ...f, options: ['ECE', 'CSE'] };
+              if (f.id === 'section') return { ...f, options: ['A', 'B', 'C'] };
+              return f;
+            });
+            if (!fields.some(f => f.id === 'section')) {
+              fields.push({ id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] });
+            }
+            evt.formFields = JSON.stringify(fields);
+          }
+        } catch (e) {}
+      } else {
+        evt.formFields = JSON.stringify([
+          { id: 'name', label: 'Full Name', type: 'text', required: true },
+          { id: 'email', label: 'Email Address', type: 'email', required: true },
+          { id: 'phone', label: 'Phone Number', type: 'tel', required: true },
+          { id: 'department', label: 'Department', type: 'select', required: true, options: ['ECE', 'CSE'] },
+          { id: 'year', label: 'Year of Study', type: 'select', required: true, options: ['1st Year', '2nd Year', '3rd Year', '4th Year'] },
+          { id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] }
+        ]);
+      }
     }
 
     memCache.events = rawEvents;
@@ -327,6 +354,24 @@ export const dbService = {
     if (!cleanEvent.id) {
       cleanEvent.id = `evt-${Date.now()}`;
       cleanEvent.createdAt = new Date().toISOString();
+    }
+
+    // Ensure formFields in saved events do not contain EEE and include Section A, B, C
+    if (cleanEvent.formFields) {
+      try {
+        let fields = typeof cleanEvent.formFields === 'string' ? JSON.parse(cleanEvent.formFields) : cleanEvent.formFields;
+        if (Array.isArray(fields)) {
+          fields = fields.map(f => {
+            if (f.id === 'department') return { ...f, options: ['ECE', 'CSE'] };
+            if (f.id === 'section') return { ...f, options: ['A', 'B', 'C'] };
+            return f;
+          });
+          if (!fields.some(f => f.id === 'section')) {
+            fields.push({ id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] });
+          }
+          cleanEvent.formFields = JSON.stringify(fields);
+        }
+      } catch (e) {}
     }
 
     // Resolve any db: key to full image URL/data URL for portable cross-device display
