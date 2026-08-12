@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
-import { Calendar, MapPin, Users, HelpCircle, User, Check, AlertCircle, Clock, ChevronDown, FileText, Download } from 'lucide-react';
+import { Calendar, MapPin, Users, HelpCircle, User, Check, AlertCircle, Clock, ChevronDown, FileText, Download, ExternalLink } from 'lucide-react';
 
 export default function EventDetailsPage() {
   const { slug } = useParams();
@@ -413,6 +413,52 @@ export default function EventDetailsPage() {
                         </span>
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* HIGH RESOLUTION POSTER PREVIEW CARD (FOR PAPER PRESENTATION) */}
+              {event.coverImage && (event.title?.toLowerCase().includes('paper presentation') || event.slug?.includes('paper-presentation')) && (
+                <div className="card" style={{ padding: '24px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
+                        Official Event Poster
+                      </h3>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>High-resolution flyer with full dates, rules, and track details</span>
+                    </div>
+                    <a
+                      href={event.coverImage}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 14px', fontSize: '0.82rem', gap: '6px' }}
+                    >
+                      <ExternalLink size={14} /> Open Full Size
+                    </a>
+                  </div>
+                  <div style={{
+                    width: '100%',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: '#ffffff',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.06)'
+                  }}>
+                    <img
+                      src={event.coverImage}
+                      alt="Paper Presentation Official Poster"
+                      style={{
+                        width: '100%',
+                        maxWidth: '700px',
+                        height: 'auto',
+                        objectFit: 'contain',
+                        display: 'block'
+                      }}
+                    />
                   </div>
                 </div>
               )}

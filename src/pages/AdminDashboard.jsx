@@ -598,6 +598,48 @@ export default function AdminDashboard() {
     reader.readAsDataURL(file);
   };
 
+  const handleBannerUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 2000;
+        const MAX_HEIGHT = 2000;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const highResBase64 = canvas.toDataURL('image/jpeg', 0.92);
+        setEventForm(prev => ({ ...prev, coverImage: highResBase64 }));
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handlePurgePhotos = async () => {
     if (window.confirm('Are you sure you want to clear all currently uploaded committee photos? This will reset them back to the default avatar icons, allowing you to upload high-quality 100% resolution photos.')) {
       const copy = JSON.parse(JSON.stringify(committee));
@@ -1139,7 +1181,7 @@ export default function AdminDashboard() {
                           type="file"
                           accept="image/*"
                           className="form-input"
-                          onChange={(e) => handleFileChange(e, (base64) => setEventForm(prev => ({ ...prev, coverImage: base64 })))}
+                          onChange={handleBannerUpload}
                         />
                       </div>
                       
