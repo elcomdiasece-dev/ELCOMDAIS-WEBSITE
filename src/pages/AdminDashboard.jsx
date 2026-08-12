@@ -299,12 +299,36 @@ export default function AdminDashboard() {
       const albs = await dbService.getAlbums();
       const comm = await dbService.getCommittee();
 
-      // Self-heal event formFields to contain Section A or B
+      // Self-heal event formFields: remove EEE from Department, ensure Section has A, B, C
       const healedEvts = await Promise.all(evts.map(async (evt) => {
         try {
-          const fields = JSON.parse(evt.formFields || '[]');
+          let fields = JSON.parse(evt.formFields || '[]');
+          let changed = false;
+
+          fields = fields.map(f => {
+            if (f.id === 'department') {
+              const newOpts = ['ECE', 'CSE'];
+              if (JSON.stringify(f.options) !== JSON.stringify(newOpts)) {
+                changed = true;
+                return { ...f, options: newOpts };
+              }
+            }
+            if (f.id === 'section') {
+              const newOpts = ['A', 'B', 'C'];
+              if (JSON.stringify(f.options) !== JSON.stringify(newOpts)) {
+                changed = true;
+                return { ...f, options: newOpts };
+              }
+            }
+            return f;
+          });
+
           if (!fields.some(f => f.id === 'section')) {
-            fields.push({ id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B'] });
+            fields.push({ id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] });
+            changed = true;
+          }
+
+          if (changed) {
             evt.formFields = JSON.stringify(fields);
             await dbService.saveEvent(evt);
           }
@@ -424,15 +448,25 @@ export default function AdminDashboard() {
         { id: 'name', label: 'Full Name', type: 'text', required: true },
         { id: 'email', label: 'Email Address', type: 'email', required: true },
         { id: 'phone', label: 'Phone Number', type: 'tel', required: true },
-        { id: 'department', label: 'Department', type: 'select', required: true, options: ['ECE', 'CSE', 'EEE'] },
+        { id: 'department', label: 'Department', type: 'select', required: true, options: ['ECE', 'CSE'] },
         { id: 'year', label: 'Year of Study', type: 'select', required: true, options: ['1st Year', '2nd Year', '3rd Year', '4th Year'] },
-        { id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B'] }
+        { id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] }
       ]
     });
     setEditingEvent('new');
   };
 
   const handleEditEvent = (evt) => {
+    const rawFields = JSON.parse(evt.formFields || '[]');
+    const sanitizedFields = rawFields.map(f => {
+      if (f.id === 'department') return { ...f, options: ['ECE', 'CSE'] };
+      if (f.id === 'section') return { ...f, options: ['A', 'B', 'C'] };
+      return f;
+    });
+    if (!sanitizedFields.some(f => f.id === 'section')) {
+      sanitizedFields.push({ id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] });
+    }
+
     setEventForm({
       id: evt.id,
       title: evt.title,
@@ -451,7 +485,7 @@ export default function AdminDashboard() {
       tracksDoc: evt.tracksDoc || '',
       tracksDocName: evt.tracksDocName || '',
       faq: JSON.parse(evt.faq || '[]'),
-      formFields: JSON.parse(evt.formFields || '[]')
+      formFields: sanitizedFields
     });
     setEditingEvent(evt);
   };

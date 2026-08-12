@@ -36,8 +36,17 @@ export default function EventDetailsPage() {
         const regs = await dbService.getRegistrations(evt.id);
         setRegistrations(regs);
 
-        // Prepopulate form fields state
-        const fields = JSON.parse(evt.formFields || '[]');
+        // Prepopulate form fields state & sanitize options
+        let rawFields = JSON.parse(evt.formFields || '[]');
+        let fields = rawFields.map(f => {
+          if (f.id === 'department') return { ...f, options: ['ECE', 'CSE'] };
+          if (f.id === 'section') return { ...f, options: ['A', 'B', 'C'] };
+          return f;
+        });
+        if (!fields.some(f => f.id === 'section')) {
+          fields.push({ id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] });
+        }
+
         const initialForm = {};
         fields.forEach(f => {
           initialForm[f.id] = f.type === 'select' ? (f.options ? f.options[0] : '') : '';
@@ -103,7 +112,15 @@ export default function EventDetailsPage() {
     );
   }
 
-  const fields = JSON.parse(event.formFields || '[]');
+  const rawFields = JSON.parse(event.formFields || '[]');
+  const fields = rawFields.map(f => {
+    if (f.id === 'department') return { ...f, options: ['ECE', 'CSE'] };
+    if (f.id === 'section') return { ...f, options: ['A', 'B', 'C'] };
+    return f;
+  });
+  if (!fields.some(f => f.id === 'section')) {
+    fields.push({ id: 'section', label: 'Section', type: 'select', required: true, options: ['A', 'B', 'C'] });
+  }
   const faqs = JSON.parse(event.faq || '[]');
   const isPast = new Date(event.startDate) < new Date();
   const isFull = registrations.length >= event.capacity;
