@@ -30,6 +30,13 @@ export default function EventDetailsPage() {
           setError('Event not found.');
           return;
         }
+
+        if (evt.title && evt.title.toLowerCase().includes('paper presentation')) {
+          if (!evt.coverImage || evt.coverImage.length < 50000) {
+            evt.coverImage = '/paper-presentation-poster.jpg';
+          }
+        }
+
         setEvent(evt);
 
         // Load registrations count

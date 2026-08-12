@@ -301,6 +301,13 @@ export const dbService = {
         if (dbImg) evt.coverImage = dbImg;
       }
 
+      // Automatically use high-resolution bundled poster for Paper Presentation
+      if (evt.title && evt.title.toLowerCase().includes('paper presentation')) {
+        if (!evt.coverImage || evt.coverImage.length < 50000) {
+          evt.coverImage = '/paper-presentation-poster.jpg';
+        }
+      }
+
       // Universal Form Fields Sanitization for all events: remove EEE, ensure Section A, B, C
       if (evt.formFields) {
         try {

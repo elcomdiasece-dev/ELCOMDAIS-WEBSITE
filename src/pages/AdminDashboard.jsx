@@ -328,6 +328,13 @@ export default function AdminDashboard() {
             changed = true;
           }
 
+          if (evt.title && evt.title.toLowerCase().includes('paper presentation')) {
+            if (!evt.coverImage || evt.coverImage.length < 50000) {
+              evt.coverImage = '/paper-presentation-poster.jpg';
+              changed = true;
+            }
+          }
+
           if (changed) {
             evt.formFields = JSON.stringify(fields);
             await dbService.saveEvent(evt);
