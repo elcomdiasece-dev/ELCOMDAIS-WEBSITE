@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
-import { Calendar, MapPin, Users, HelpCircle, User, Check, AlertCircle, Clock, ChevronDown } from 'lucide-react';
+import { Calendar, MapPin, Users, HelpCircle, User, Check, AlertCircle, Clock, ChevronDown, FileText, Download } from 'lucide-react';
 
 export default function EventDetailsPage() {
   const { slug } = useParams();
@@ -311,6 +311,108 @@ export default function EventDetailsPage() {
                     <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0 }}>
                       {event.prerequisites}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* PAPER PRESENTATION / EVENT GUIDELINES & TRACKS DOCUMENTS */}
+              {(event.guidelinesDoc || event.tracksDoc || (event.title && event.title.toLowerCase().includes('paper presentation'))) && (
+                <div style={{
+                  padding: '24px',
+                  borderRadius: 'var(--radius-lg, 12px)',
+                  background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.06) 0%, rgba(30, 58, 138, 0.03) 100%)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+                }}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText size={20} color="var(--primary-cyan)" /> Event Guidelines & Presentation Tracks
+                  </h3>
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '18px' }}>
+                    Please review the official guidelines document and topic tracks before preparing and submitting your paper presentation.
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+                    {/* Guidelines Document Card */}
+                    <div className="card" style={{
+                      padding: '18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '14px',
+                      margin: 0
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <FileText size={20} />
+                        </div>
+                        <div style={{ overflow: 'hidden' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--primary-cyan)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Document
+                          </span>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', margin: '2px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                            {event.guidelinesDocName || 'Guidelines Document'}
+                          </h4>
+                        </div>
+                      </div>
+
+                      {event.guidelinesDoc ? (
+                        <a
+                          href={event.guidelinesDoc}
+                          download={event.guidelinesDocName || 'Paper_Presentation_Guidelines.pdf'}
+                          className="btn btn-primary"
+                          style={{ width: '100%', justifyContent: 'center', padding: '8px 14px', fontSize: '0.85rem', gap: '6px' }}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Download size={14} /> Download Guidelines
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          Guidelines document will be attached shortly.
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Tracks Document Card */}
+                    <div className="card" style={{
+                      padding: '18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '14px',
+                      margin: 0
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <FileText size={20} />
+                        </div>
+                        <div style={{ overflow: 'hidden' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--primary-cyan)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Document
+                          </span>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', margin: '2px 0 0', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                            {event.tracksDocName || 'Tracks Document'}
+                          </h4>
+                        </div>
+                      </div>
+
+                      {event.tracksDoc ? (
+                        <a
+                          href={event.tracksDoc}
+                          download={event.tracksDocName || 'Paper_Presentation_Tracks.pdf'}
+                          className="btn btn-primary"
+                          style={{ width: '100%', justifyContent: 'center', padding: '8px 14px', fontSize: '0.85rem', gap: '6px' }}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Download size={14} /> Download Tracks
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          Tracks document will be attached shortly.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

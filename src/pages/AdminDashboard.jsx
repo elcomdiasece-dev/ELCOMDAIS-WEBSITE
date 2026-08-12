@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../lib/dbService';
-import { LayoutDashboard, Calendar, Users, Image as ImageIcon, Download, Trash2, Plus, Edit3, CheckCircle, Info, Cpu, ExternalLink, Award } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Image as ImageIcon, Download, Trash2, Plus, Edit3, CheckCircle, Info, Cpu, ExternalLink, Award, FileText } from 'lucide-react';
 
 const DEFAULT_TEAM = {
   faculty: [
@@ -413,6 +413,10 @@ export default function AdminDashboard() {
       description: '',
       prerequisites: '',
       bannerPosition: 'center',
+      guidelinesDoc: '',
+      guidelinesDocName: '',
+      tracksDoc: '',
+      tracksDocName: '',
       faq: [
         { q: 'Will certificates be provided?', a: 'Yes, all participants will receive a Certificate of Participation.' }
       ],
@@ -442,6 +446,10 @@ export default function AdminDashboard() {
       description: evt.description || '',
       prerequisites: evt.prerequisites || '',
       bannerPosition: evt.bannerPosition || 'center',
+      guidelinesDoc: evt.guidelinesDoc || '',
+      guidelinesDocName: evt.guidelinesDocName || '',
+      tracksDoc: evt.tracksDoc || '',
+      tracksDocName: evt.tracksDocName || '',
       faq: JSON.parse(evt.faq || '[]'),
       formFields: JSON.parse(evt.formFields || '[]')
     });
@@ -571,6 +579,21 @@ export default function AdminDashboard() {
         callback(compressedBase64);
       };
       img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDocUpload = (e, docField, nameField) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setEventForm(prev => ({
+        ...prev,
+        [docField]: event.target.result,
+        [nameField]: file.name
+      }));
     };
     reader.readAsDataURL(file);
   };
@@ -1140,6 +1163,100 @@ export default function AdminDashboard() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', marginBottom: '20px' }}>
                         <img src={eventForm.coverImage} alt="Event cover preview" style={{ width: '80px', height: '45px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Banner image loaded</span>
+                      </div>
+                    )}
+
+                    {/* PAPER PRESENTATION SPECIFIC: GUIDELINES & TRACKS DOCUMENT UPLOADS */}
+                    {((eventForm.title && eventForm.title.trim().toLowerCase().includes('paper presentation')) || (editingEvent && editingEvent !== 'new' && editingEvent.title && editingEvent.title.trim().toLowerCase().includes('paper presentation'))) && (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '20px',
+                        marginBottom: '20px',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        backgroundColor: 'rgba(56, 189, 248, 0.05)',
+                        border: '1px solid rgba(56, 189, 248, 0.25)'
+                      }} className="grid-2">
+                        
+                        {/* Guidelines Document Upload Column */}
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                            <FileText size={15} color="var(--primary-cyan)" /> Guidelines Document (Upload)
+                          </label>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                            className="form-input"
+                            onChange={(e) => handleDocUpload(e, 'guidelinesDoc', 'guidelinesDocName')}
+                          />
+                          {eventForm.guidelinesDoc && (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', padding: '6px 12px', background: 'var(--card-bg, #fff)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }}>
+                                📄 {eventForm.guidelinesDocName || 'Guidelines Document'}
+                              </span>
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                <a
+                                  href={eventForm.guidelinesDoc}
+                                  download={eventForm.guidelinesDocName || 'Paper_Presentation_Guidelines.pdf'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ fontSize: '0.75rem', color: 'var(--primary-cyan)', fontWeight: 600, textDecoration: 'none' }}
+                                >
+                                  Preview
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => setEventForm(prev => ({ ...prev, guidelinesDoc: '', guidelinesDocName: '' }))}
+                                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                                  title="Remove document"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Tracks Document Upload Column */}
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                            <FileText size={15} color="var(--primary-cyan)" /> Tracks Document (Upload)
+                          </label>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                            className="form-input"
+                            onChange={(e) => handleDocUpload(e, 'tracksDoc', 'tracksDocName')}
+                          />
+                          {eventForm.tracksDoc && (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', padding: '6px 12px', background: 'var(--card-bg, #fff)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }}>
+                                📄 {eventForm.tracksDocName || 'Tracks Document'}
+                              </span>
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                <a
+                                  href={eventForm.tracksDoc}
+                                  download={eventForm.tracksDocName || 'Paper_Presentation_Tracks.pdf'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ fontSize: '0.75rem', color: 'var(--primary-cyan)', fontWeight: 600, textDecoration: 'none' }}
+                                >
+                                  Preview
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => setEventForm(prev => ({ ...prev, tracksDoc: '', tracksDocName: '' }))}
+                                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                                  title="Remove document"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                       </div>
                     )}
 
