@@ -328,7 +328,7 @@ export default function AdminDashboard() {
             changed = true;
           }
 
-          if (evt.title && evt.title.toLowerCase().includes('paper presentation')) {
+          if (evt.title && (evt.title.toLowerCase().includes('paper presentation') || evt.title.toLowerCase().includes('poster presentation'))) {
             if (!evt.coverImage || evt.coverImage.length < 50000) {
               evt.coverImage = '/paper-presentation-poster.jpg';
               changed = true;
@@ -1249,8 +1249,8 @@ export default function AdminDashboard() {
                       </div>
                     )}
 
-                    {/* PAPER PRESENTATION SPECIFIC: GUIDELINES & TRACKS DOCUMENT UPLOADS */}
-                    {((eventForm.title && eventForm.title.trim().toLowerCase().includes('paper presentation')) || (editingEvent && editingEvent !== 'new' && editingEvent.title && editingEvent.title.trim().toLowerCase().includes('paper presentation'))) && (
+                    {/* PAPER / POSTER PRESENTATION SPECIFIC: GUIDELINES & TRACKS DOCUMENT UPLOADS */}
+                    {((eventForm.title && (eventForm.title.trim().toLowerCase().includes('paper presentation') || eventForm.title.trim().toLowerCase().includes('poster presentation'))) || (editingEvent && editingEvent !== 'new' && editingEvent.title && (editingEvent.title.trim().toLowerCase().includes('paper presentation') || editingEvent.title.trim().toLowerCase().includes('poster presentation')))) && (
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: '1fr 1fr',

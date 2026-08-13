@@ -31,7 +31,7 @@ export default function EventDetailsPage() {
           return;
         }
 
-        if (evt.title && evt.title.toLowerCase().includes('paper presentation')) {
+        if (evt.title && (evt.title.toLowerCase().includes('paper presentation') || evt.title.toLowerCase().includes('poster presentation'))) {
           if (!evt.coverImage || evt.coverImage.length < 50000) {
             evt.coverImage = '/paper-presentation-poster.jpg';
           }
@@ -366,8 +366,8 @@ export default function EventDetailsPage() {
                 </div>
               )}
 
-              {/* PAPER PRESENTATION / EVENT GUIDELINES & TRACKS DOCUMENTS */}
-              {(event.guidelinesDoc || event.tracksDoc || (event.title && event.title.toLowerCase().includes('paper presentation'))) && (
+              {/* PAPER / POSTER PRESENTATION / EVENT GUIDELINES & TRACKS DOCUMENTS */}
+              {(event.guidelinesDoc || event.tracksDoc || (event.title && (event.title.toLowerCase().includes('paper presentation') || event.title.toLowerCase().includes('poster presentation')))) && (
                 <div style={{
                   padding: '24px',
                   borderRadius: 'var(--radius-lg, 12px)',

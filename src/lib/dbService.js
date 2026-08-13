@@ -301,8 +301,8 @@ export const dbService = {
         if (dbImg) evt.coverImage = dbImg;
       }
 
-      // Automatically use high-resolution bundled poster for Paper Presentation
-      if (evt.title && evt.title.toLowerCase().includes('paper presentation')) {
+      // Automatically use high-resolution bundled poster for Paper / Poster Presentation
+      if (evt.title && (evt.title.toLowerCase().includes('paper presentation') || evt.title.toLowerCase().includes('poster presentation'))) {
         if (!evt.coverImage || evt.coverImage.length < 50000) {
           evt.coverImage = '/paper-presentation-poster.jpg';
         }
