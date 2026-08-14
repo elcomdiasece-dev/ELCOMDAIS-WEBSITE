@@ -381,20 +381,11 @@ export const dbService = {
       } catch (e) {}
     }
 
-    // Resolve any db: key to full image URL/data URL for portable cross-device display
-    let portableCoverImage = cleanEvent.coverImage || '';
-    if (portableCoverImage.startsWith('db:')) {
-      const key = portableCoverImage.replace('db:', '');
-      const dbImg = await getDBImage(key);
-      if (dbImg) portableCoverImage = dbImg;
-    }
-    cleanEvent.coverImage = portableCoverImage;
-
-    // 1. ALWAYS save to local storage & IndexedDB
-    const localEvent = { ...cleanEvent };
-    if (localEvent.coverImage && localEvent.coverImage.startsWith('data:')) {
-      const imageKey = `event_image_${localEvent.id}`;
-      await saveDBImage(imageKey, localEvent.coverImage);
+    // Save raw base64 cover images into IndexedDB and keep lightweight pointer keys for localStorage & Supabase
+    if (cleanEvent.coverImage && cleanEvent.coverImage.startsWith('data:')) {
+      const imageKey = `event_image_${cleanEvent.id}`;
+      await saveDBImage(imageKey, cleanEvent.coverImage);
+      cleanEvent.coverImage = `db:${imageKey}`;
     }
 
     const events = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
@@ -404,7 +395,11 @@ export const dbService = {
     } else {
       events.push(cleanEvent);
     }
-    localStorage.setItem('elcomdais_events', JSON.stringify(events));
+    try {
+      localStorage.setItem('elcomdais_events', JSON.stringify(events));
+    } catch (e) {
+      console.warn('localStorage saveEvent note:', e);
+    }
 
     // 2. Sync portable event (with real coverImage data!) to Supabase cloud database
     if (supabase) {
@@ -936,14 +931,39 @@ export const dbService = {
 
     if (!rawData) return null;
 
-    for (let i = 0; i < rawData.faculty.length; i++) {
-      await restoreNode(rawData.faculty[i], `faculty_${i}`);
+    const restoreNode = async (node, idKey) => {
+      if (!node) return;
+      if (node.image && node.image.startsWith('db:')) {
+        const key = node.image.replace('db:', '');
+        const dbImg = await getDBImage(key);
+        if (dbImg) node.image = dbImg;
+      }
+      if (node.members && Array.isArray(node.members)) {
+        for (let i = 0; i < node.members.length; i++) {
+          const sub = node.members[i];
+          if (sub && sub.image && sub.image.startsWith('db:')) {
+            const key = sub.image.replace('db:', '');
+            const dbImg = await getDBImage(key);
+            if (dbImg) sub.image = dbImg;
+          }
+        }
+      }
+    };
+
+    if (rawData.faculty) {
+      for (let i = 0; i < rawData.faculty.length; i++) {
+        await restoreNode(rawData.faculty[i], `faculty_${i}`);
+      }
     }
-    for (let i = 0; i < rawData.presidents.length; i++) {
-      await restoreNode(rawData.presidents[i], `presidents_${i}`);
+    if (rawData.presidents) {
+      for (let i = 0; i < rawData.presidents.length; i++) {
+        await restoreNode(rawData.presidents[i], `presidents_${i}`);
+      }
     }
-    for (let i = 0; i < rawData.core.length; i++) {
-      await restoreNode(rawData.core[i], `core_${rawData.core[i].id}`);
+    if (rawData.core) {
+      for (let i = 0; i < rawData.core.length; i++) {
+        await restoreNode(rawData.core[i], `core_${rawData.core[i].id || i}`);
+      }
     }
 
     memCache.committee = rawData;
@@ -954,33 +974,39 @@ export const dbService = {
     memCache.committee = null;
     const cleanData = JSON.parse(JSON.stringify(committeeData));
 
-    // Resolve any legacy db: keys to base64 if available in IndexedDB
-    const processNode = async (node, id) => {
-      if (node.image && node.image.startsWith('db:')) {
-        const key = node.image.replace('db:', '');
-        const dbImg = await getDBImage(key);
-        node.image = dbImg || '';
+    // Extract any raw base64 images into IndexedDB so cleanData contains ONLY lightweight db: keys or HTTP URLs!
+    const processNode = async (node, idKey) => {
+      if (!node) return;
+      if (node.image && node.image.startsWith('data:image')) {
+        await saveDBImage(idKey, node.image);
+        node.image = `db:${idKey}`;
       }
-      if (node.members) {
+      if (node.members && Array.isArray(node.members)) {
         for (let i = 0; i < node.members.length; i++) {
           const sub = node.members[i];
-          if (sub.image && sub.image.startsWith('db:')) {
-            const key = sub.image.replace('db:', '');
-            const dbImg = await getDBImage(key);
-            sub.image = dbImg || '';
+          const subKey = `${idKey}_sub_${i}`;
+          if (sub && sub.image && sub.image.startsWith('data:image')) {
+            await saveDBImage(subKey, sub.image);
+            sub.image = `db:${subKey}`;
           }
         }
       }
     };
 
-    for (let i = 0; i < cleanData.faculty.length; i++) {
-      await processNode(cleanData.faculty[i], `faculty_${i}`);
+    if (cleanData.faculty) {
+      for (let i = 0; i < cleanData.faculty.length; i++) {
+        await processNode(cleanData.faculty[i], `faculty_${i}`);
+      }
     }
-    for (let i = 0; i < cleanData.presidents.length; i++) {
-      await processNode(cleanData.presidents[i], `presidents_${i}`);
+    if (cleanData.presidents) {
+      for (let i = 0; i < cleanData.presidents.length; i++) {
+        await processNode(cleanData.presidents[i], `presidents_${i}`);
+      }
     }
-    for (let i = 0; i < cleanData.core.length; i++) {
-      await processNode(cleanData.core[i], `core_${cleanData.core[i].id}`);
+    if (cleanData.core) {
+      for (let i = 0; i < cleanData.core.length; i++) {
+        await processNode(cleanData.core[i], `core_${cleanData.core[i].id || i}`);
+      }
     }
 
     try {
@@ -988,7 +1014,6 @@ export const dbService = {
     } catch (e) {
       if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
         console.warn('LocalStorage quota limit reached. Clearing obsolete keys...');
-        // Clear obsolete keys with old spelling (elcomdias_)
         const obsoleteKeys = [
           'elcomdias_committee',
           'elcomdias_events',
@@ -999,7 +1024,6 @@ export const dbService = {
         ];
         obsoleteKeys.forEach(k => localStorage.removeItem(k));
         
-        // Attempt retry
         try {
           localStorage.setItem('elcomdais_committee', JSON.stringify(cleanData));
           console.log('Saved committee successfully after clearing obsolete keys.');
@@ -1011,7 +1035,7 @@ export const dbService = {
       }
     }
 
-    // Sync cleanData (with real portable base64/HTTP image URLs!) directly to Supabase settings table
+    // Sync cleanData (with lightweight db: keys and URLs!) directly to Supabase settings table
     if (supabase) {
       try {
         const { error } = await supabase
