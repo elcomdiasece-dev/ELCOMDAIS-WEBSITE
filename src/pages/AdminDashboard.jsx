@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../lib/dbService';
+import { convertHeicIfNeeded } from '../lib/heicHelper';
 import { LayoutDashboard, Calendar, Users, Image as ImageIcon, Download, Trash2, Plus, Edit3, CheckCircle, Info, Cpu, ExternalLink, Award, FileText } from 'lucide-react';
 
 const DEFAULT_TEAM = {
@@ -582,9 +583,11 @@ export default function AdminDashboard() {
     });
   };
 
-  const handleFileChange = (e, callback) => {
-    const file = e.target.files[0];
+  const handleFileChange = async (e, callback) => {
+    let file = e.target.files[0];
     if (!file) return;
+
+    file = await convertHeicIfNeeded(file);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -639,9 +642,11 @@ export default function AdminDashboard() {
     reader.readAsDataURL(file);
   };
 
-  const handleBannerUpload = (e) => {
-    const file = e.target.files[0];
+  const handleBannerUpload = async (e) => {
+    let file = e.target.files[0];
     if (!file) return;
+
+    file = await convertHeicIfNeeded(file);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -779,11 +784,12 @@ export default function AdminDashboard() {
   };
 
   // --- GALLERY PANEL LOGIC ---
-  const handleAlbumFilesChange = (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
+  const handleAlbumFilesChange = async (e) => {
+    const rawFiles = Array.from(e.target.files);
+    if (!rawFiles.length) return;
 
-    files.forEach(file => {
+    for (const rawFile of rawFiles) {
+      const file = await convertHeicIfNeeded(rawFile);
       const reader = new FileReader();
       reader.onload = (event) => {
         const img = new Image();
@@ -819,7 +825,7 @@ export default function AdminDashboard() {
         img.src = event.target.result;
       };
       reader.readAsDataURL(file);
-    });
+    }
   };
 
   const removeAlbumImage = (idx) => {
@@ -1220,7 +1226,7 @@ export default function AdminDashboard() {
                         <label className="form-label">Event Banner / Cover Image (Upload)</label>
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/*,.heic,.heif"
                           className="form-input"
                           onChange={handleBannerUpload}
                         />
@@ -1659,7 +1665,7 @@ export default function AdminDashboard() {
                         <input
                           type="file"
                           multiple
-                          accept="image/*"
+                          accept="image/*,.heic,.heif"
                           className="form-input"
                           onChange={handleAlbumFilesChange}
                         />
@@ -1784,7 +1790,7 @@ export default function AdminDashboard() {
                             <label className="form-label">Member Photo (Upload File)</label>
                             <input
                               type="file"
-                              accept="image/*"
+                              accept="image/*,.heic,.heif"
                               className="form-input"
                               onChange={(e) => handleFileChange(e, (base64) => handleMemberChange('image', base64))}
                             />
@@ -1855,7 +1861,7 @@ export default function AdminDashboard() {
                                   <label className="form-label" style={{ fontSize: '0.75rem' }}>Member Photo (Upload)</label>
                                   <input
                                     type="file"
-                                    accept="image/*"
+                                    accept="image/*,.heic,.heif"
                                     className="form-input"
                                     style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
                                     onChange={(e) => handleFileChange(e, (base64) => handleSubMemberChange(sIdx, 'image', base64))}
