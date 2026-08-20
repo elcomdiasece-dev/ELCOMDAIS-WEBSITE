@@ -3,6 +3,53 @@ import { dbService } from '../lib/dbService';
 import { convertHeicIfNeeded } from '../lib/heicHelper';
 import { LayoutDashboard, Calendar, Users, Image as ImageIcon, Download, Trash2, Plus, Edit3, CheckCircle, Info, Cpu, ExternalLink, Award, FileText } from 'lucide-react';
 
+// Photos placed in public/committee/ folder — add/remove filenames here as needed
+const COMMITTEE_PHOTOS = [
+  'Aakash.jpg',
+  'Abhiranjan.jpg',
+  'Bharanidharan.jpg',
+  'Bharathi.jpg',
+  'Dilip Jaya Raja.jpg',
+  'G V N S Akhila.jpg',
+  'Gorla Harika Reddy.jpg',
+  'Gurubalan.jpg',
+  'HariPrasath.jpg',
+  'Haripasad.jpg',
+  'Haritha A K.jpg',
+  'IMG-20260820-WA0091.jpg',
+  'IMG-20260820-WA0094.jpg',
+  'IMG-20260820-WA0096.jpg',
+  'IMG-20260820-WA0098.jpg',
+  'IMG-20260820-WA0118.jpg',
+  'IMG-20260820-WA0136.jpg',
+  'IMG-20260820-WA0140.jpg',
+  'IMG-20260820-WA0148.jpg',
+  'Karnam Nirmal.jpg',
+  'Kavya.jpg',
+  'Konduru Revanth.jpg',
+  'Megalai.jpg',
+  'Mohamed Irfan.jpg',
+  'Monisha.jpg',
+  'Nandhana.jpg',
+  'Raj Priyan.jpg',
+  'Rajagopalan.jpg',
+  'Rajasri.jpg',
+  'Ram Kumar.jpg',
+  'Ramya.jpg',
+  'Ranjith Kumar.jpg',
+  'Renugadevi.jpg',
+  'Risha.jpg',
+  'Santhiya.jpg',
+  'Sarvesh.jpg',
+  'Srikumaran.jpg',
+  'Suba M.jpg',
+  'Swathi.jpg',
+  'Tarunika.jpg',
+  'Usha.jpg',
+  'Venkatvishaal.jpg',
+  'VijayaLakshmi.jpg',
+];
+
 const DEFAULT_TEAM = {
   faculty: [
     { name: '', role: 'Faculty Coordinator', bio: '', image: '' },
@@ -159,6 +206,10 @@ export default function AdminDashboard() {
   // Status flags
   const [eventSuccess, setEventSuccess] = useState(false);
   const [commSuccess, setCommSuccess] = useState(false);
+
+  // Photo library picker state: { callback: fn } | null
+  const [photoPicker, setPhotoPicker] = useState(null);
+  const [photoPickerSearch, setPhotoPickerSearch] = useState('');
 
   // Migration states
   const [migrating, setMigrating] = useState(false);
@@ -1724,6 +1775,93 @@ export default function AdminDashboard() {
             {/* TAB 5: COMMITTEE MANAGEMENT PANEL */}
             {!loading && activeTab === 'committee' && committee && (
               <div>
+
+                {/* ===== PHOTO LIBRARY PICKER MODAL ===== */}
+                {photoPicker && (
+                  <div
+                    onClick={() => { setPhotoPicker(null); setPhotoPickerSearch(''); }}
+                    style={{
+                      position: 'fixed', inset: 0, zIndex: 1000,
+                      background: 'rgba(0,0,0,0.75)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      padding: '20px'
+                    }}
+                  >
+                    <div
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        background: 'var(--bg-card, #1e1e2e)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '12px',
+                        width: '100%',
+                        maxWidth: '680px',
+                        maxHeight: '80vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {/* Modal header */}
+                      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                        <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)' }}>📁 Pick a Photo from Library</h4>
+                        <input
+                          type="text"
+                          placeholder="Search by name…"
+                          value={photoPickerSearch}
+                          onChange={e => setPhotoPickerSearch(e.target.value)}
+                          style={{ flex: 1, minWidth: '160px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '0.85rem' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setPhotoPicker(null); setPhotoPickerSearch(''); }}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer', padding: '0 4px' }}
+                        >✕</button>
+                      </div>
+
+                      {/* Photo grid */}
+                      <div style={{ overflowY: 'auto', padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '12px' }}>
+                        {COMMITTEE_PHOTOS
+                          .filter(f => f.toLowerCase().includes(photoPickerSearch.toLowerCase()))
+                          .map(filename => (
+                            <button
+                              key={filename}
+                              type="button"
+                              onClick={() => {
+                                photoPicker.callback(`/committee/${filename}`);
+                                setPhotoPicker(null);
+                                setPhotoPickerSearch('');
+                              }}
+                              title={filename}
+                              style={{
+                                background: 'var(--bg-app)',
+                                border: '2px solid var(--border-color)',
+                                borderRadius: '10px',
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                padding: 0,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                transition: 'border-color 0.15s, transform 0.15s'
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.transform = 'scale(1.04)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.transform = 'scale(1)'; }}
+                            >
+                              <img
+                                src={`/committee/${filename}`}
+                                alt={filename}
+                                style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }}
+                              />
+                              <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', padding: '4px 4px 6px', textAlign: 'center', wordBreak: 'break-word', lineHeight: 1.2 }}>
+                                {filename.replace('.jpg', '')}
+                              </span>
+                            </button>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {commSuccess && (
                   <div className="card" style={{ borderColor: '#10b981', background: 'rgba(16,185,129,0.05)', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 20px', marginBottom: '20px' }}>
                     <CheckCircle size={18} color="#10b981" />
@@ -1787,17 +1925,30 @@ export default function AdminDashboard() {
                           </div>
 
                           <div className="form-group" style={{ margin: 0 }}>
-                            <label className="form-label">Member Photo (Upload File)</label>
-                            <input
-                              type="file"
-                              accept="image/*,.heic,.heif"
-                              className="form-input"
-                              onChange={(e) => handleFileChange(e, (base64) => handleMemberChange('image', base64))}
-                            />
+                            <label className="form-label">Member Photo</label>
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ fontSize: '0.78rem', padding: '5px 10px', whiteSpace: 'nowrap' }}
+                                onClick={() => setPhotoPicker({ callback: (url) => handleMemberChange('image', url) })}
+                              >
+                                📁 Pick from Library
+                              </button>
+                              <label className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '5px 10px', cursor: 'pointer', whiteSpace: 'nowrap', margin: 0 }}>
+                                ⬆ Upload File
+                                <input
+                                  type="file"
+                                  accept="image/*,.heic,.heif"
+                                  style={{ display: 'none' }}
+                                  onChange={(e) => handleFileChange(e, (base64) => handleMemberChange('image', base64))}
+                                />
+                              </label>
+                            </div>
                             {member.image && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
                                 <img src={member.image} alt="Preview" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Image loaded (Base64)</span>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{member.image.startsWith('/committee/') ? member.image : 'Image loaded (Base64)'}</span>
                               </div>
                             )}
                           </div>
@@ -1858,18 +2009,30 @@ export default function AdminDashboard() {
                                 </div>
 
                                 <div className="form-group" style={{ margin: 0 }}>
-                                  <label className="form-label" style={{ fontSize: '0.75rem' }}>Member Photo (Upload)</label>
-                                  <input
-                                    type="file"
-                                    accept="image/*,.heic,.heif"
-                                    className="form-input"
-                                    style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
-                                    onChange={(e) => handleFileChange(e, (base64) => handleSubMemberChange(sIdx, 'image', base64))}
-                                  />
+                                  <label className="form-label" style={{ fontSize: '0.75rem' }}>Member Photo</label>
+                                  <div style={{ display: 'flex', gap: '6px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      style={{ fontSize: '0.72rem', padding: '4px 8px', whiteSpace: 'nowrap' }}
+                                      onClick={() => setPhotoPicker({ callback: (url) => handleSubMemberChange(sIdx, 'image', url) })}
+                                    >
+                                      📁 Library
+                                    </button>
+                                    <label className="btn btn-secondary" style={{ fontSize: '0.72rem', padding: '4px 8px', cursor: 'pointer', whiteSpace: 'nowrap', margin: 0 }}>
+                                      ⬆ Upload
+                                      <input
+                                        type="file"
+                                        accept="image/*,.heic,.heif"
+                                        style={{ display: 'none' }}
+                                        onChange={(e) => handleFileChange(e, (base64) => handleSubMemberChange(sIdx, 'image', base64))}
+                                      />
+                                    </label>
+                                  </div>
                                   {sub.image && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                                       <img src={sub.image} alt="Sub preview" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
-                                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Loaded</span>
+                                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sub.image.startsWith('/committee/') ? sub.image : 'Loaded'}</span>
                                     </div>
                                   )}
                                 </div>
