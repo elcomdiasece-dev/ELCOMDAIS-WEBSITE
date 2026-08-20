@@ -59,9 +59,8 @@ desktop.ini
 coverage/
 .nyc_output/
 
-# Local committee photos (kept on disk, not committed to git)
+# Local committee photos source folder (kept on disk, not committed)
 Photos/
-public/committee/
 
 # Scratch/patch scripts
 *.cjs
