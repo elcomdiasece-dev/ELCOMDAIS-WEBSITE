@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.elcomdais.com/sitemap.xml
+Sitemap: https://elcomdais.com/sitemap.xml
