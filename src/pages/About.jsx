@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Phone, MapPin, Award, BookOpen, Compass, CheckCircle2, User, ChevronDown, ChevronUp, Cpu } from 'lucide-react';
 import { dbService } from '../lib/dbService';
+import Lightbox from '../components/Lightbox';
 
 const DEFAULT_TEAM = {
   faculty: [
@@ -118,6 +119,59 @@ export default function About() {
 
   // Track expanded sub-teams
   const [expandedCards, setExpandedCards] = useState({});
+  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [zoomedMember, setZoomedMember] = useState(null);
+
+  // Lightbox State for Committee Photos
+  const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const [lightboxPhotos, setLightboxPhotos] = useState([]);
+
+  // Extract all zoomable committee photos
+  const getCommitteePhotosList = () => {
+    const list = [];
+    if (team.faculty && Array.isArray(team.faculty)) {
+      team.faculty.forEach(f => {
+        if (f.image && !f.image.startsWith('db:')) {
+          list.push({ url: f.image, caption: `${f.name} - ${f.role} (Faculty Coordinator)` });
+        }
+      });
+    }
+    if (team.presidents && Array.isArray(team.presidents)) {
+      team.presidents.forEach(p => {
+        if (p.image && !p.image.startsWith('db:')) {
+          list.push({ url: p.image, caption: `${p.name} - ${p.role}` });
+        }
+      });
+    }
+    if (team.core && Array.isArray(team.core)) {
+      team.core.forEach(c => {
+        if (c.image && !c.image.startsWith('db:')) {
+          list.push({ url: c.image, caption: `${c.name} - ${c.role}` });
+        }
+        if (c.members && Array.isArray(c.members)) {
+          c.members.forEach(sub => {
+            if (sub.image && !sub.image.startsWith('db:')) {
+              list.push({ url: sub.image, caption: `${sub.name} - ${sub.role} (Sub-team Member)` });
+            }
+          });
+        }
+      });
+    }
+    return list;
+  };
+
+  const openZoom = (member) => {
+    if (!member || !member.image || member.image.startsWith('db:')) return;
+    const photos = getCommitteePhotosList();
+    const index = photos.findIndex(p => p.url === member.image);
+    if (index !== -1) {
+      setLightboxPhotos(photos);
+      setLightboxIndex(index);
+    } else {
+      setLightboxPhotos([{ url: member.image, caption: `${member.name} - ${member.role}` }]);
+      setLightboxIndex(0);
+    }
+  };
 
   useEffect(() => {
     async function loadCommitteeData() {
@@ -156,173 +210,118 @@ export default function About() {
     }, 1200);
   };
 
-  const renderNodeCard = (member, hasTeam = false, isExpanded = false, onToggle = null) => {
+  const renderSvgNode = (member, x, y, size = 70, hasTeam = false, isExpanded = false, onToggle = null, labelPosition = 'bottom') => {
+    const radius = size / 2;
+    const randomSuffix = Math.floor(Math.random() * 1000000);
+    const clipId = `clip-${member.role.replace(/[^a-zA-Z0-9]/g, '-')}-${randomSuffix}`;
+    const labelY = labelPosition === 'top' ? y - radius - 55 : y + radius + 6;
+
+    const hasPhoto = member.image && !member.image.startsWith('db:');
+    const handleClick = onToggle ? () => onToggle() : (hasPhoto ? () => openZoom(member) : null);
+    const cursorStyle = onToggle || hasPhoto ? 'pointer' : 'default';
+
     return (
-      <div className="card" style={{
-        width: '260px',
-        padding: 0,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'stretch',
-        textAlign: 'center',
-        border: isExpanded ? '1px solid var(--primary-cyan)' : '1px solid var(--border-color)',
-        boxShadow: isExpanded ? '0 10px 25px rgba(2, 132, 199, 0.15)' : 'var(--shadow-md)',
-        background: '#ffffff',
-        zIndex: 2,
-        transition: 'var(--transition-smooth)',
-        borderRadius: 'var(--radius-lg)'
-      }}>
-        {/* Photo Container with rounded frame */}
-        <div style={{
-          position: 'relative',
-          width: '100%',
-          paddingTop: '80%',
-          backgroundColor: 'var(--bg-app)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          borderBottom: '1px solid var(--border-color)'
-        }}>
+      <g 
+        key={member.role + '-' + (member.name || 'pending')} 
+        className="organic-tree-node-group"
+        style={{ cursor: cursorStyle, transformOrigin: `${x}px ${y}px` }} 
+        onClick={handleClick}
+      >
+        {/* Hover ring glow / background foliage */}
+        {hasTeam && (
+          <circle
+            cx={x}
+            cy={y}
+            r={radius + 8}
+            fill="none"
+            stroke={isExpanded ? 'var(--accent-purple)' : 'var(--primary-blue)'}
+            strokeWidth="2"
+            strokeDasharray="4 4"
+            opacity="0.6"
+            className="node-orbit-glow"
+          />
+        )}
+        
+        {/* Leaf cluster behind node */}
+        <circle cx={x - 10} cy={y - 10} r={radius - 5} fill="#4ade80" opacity="0.15" />
+        <circle cx={x + 10} cy={y - 5} r={radius - 8} fill="#22c55e" opacity="0.12" />
+
+        {/* Circular Avatar Container */}
+        <g 
+          className="svg-avatar-interactive"
+          onClick={(e) => {
+            if (member.image && !member.image.startsWith('db:')) {
+              e.stopPropagation();
+              setZoomedMember(member);
+            }
+          }}
+          style={{ cursor: member.image && !member.image.startsWith('db:') ? 'pointer' : 'default' }}
+        >
+          <defs>
+            <clipPath id={clipId}>
+              <circle cx={x} cy={y} r={radius} />
+            </clipPath>
+          </defs>
+          <circle cx={x} cy={y} r={radius + 3} fill="none" stroke="#8b5a2b" strokeWidth="2.5" className="avatar-border" />
+          <circle cx={x} cy={y} r={radius} fill="#f1f5f9" />
+          
           {member.image && !member.image.startsWith('db:') ? (
-            <img
-              src={member.image}
-              alt={member.name || member.role}
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            <image
+              href={member.image}
+              x={x - radius}
+              y={y - radius}
+              width={size}
+              height={size}
+              preserveAspectRatio="xMidYMid slice"
+              clipPath={`url(#${clipId})`}
               onError={(e) => {
                 e.target.style.display = 'none';
               }}
             />
-          ) : (
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-muted)',
-              background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)'
-            }}>
-              <User size={48} style={{ opacity: 0.2 }} />
-            </div>
-          )}
-        </div>
+          ) : null}
 
-        {/* Member Details */}
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <h4 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, fontWeight: 700, minHeight: '1.2rem' }}>
-            {member.name || 'Profile Pending'}
-          </h4>
-          <span style={{
-            fontSize: '0.72rem',
-            color: 'var(--primary-cyan)',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
-            {member.role}
-          </span>
-          {member.bio && (
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5', margin: '6px 0 0 0' }}>
-              {member.bio}
-            </p>
+          {/* Fallback Icon */}
+          {(!member.image || member.image.startsWith('db:')) && (
+            <g clipPath={`url(#${clipId})`}>
+              <circle cx={x} cy={y} r={radius} fill="#e2e8f0" />
+              <circle cx={x} cy={y - radius * 0.25} r={radius * 0.35} fill="#64748b" opacity="0.5" />
+              <path d={`M ${x - radius * 0.6},${y + radius * 0.7} A ${radius * 0.6},${radius * 0.6} 0 0 1 ${x + radius * 0.6},${y + radius * 0.7} Z`} fill="#64748b" opacity="0.5" />
+            </g>
           )}
+        </g>
 
-          {/* Interactive Expand button */}
-          {hasTeam && onToggle && (
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                onToggle();
-              }}
-              className="btn btn-secondary"
-              style={{
-                marginTop: '12px',
-                padding: '6px 12px',
-                fontSize: '0.72rem',
-                width: '100%',
-                justifyContent: 'center',
-                gap: '6px',
-                borderRadius: '20px',
-                border: '1px solid rgba(2, 132, 199, 0.2)',
-                background: isExpanded ? 'rgba(2, 132, 199, 0.05)' : '#ffffff',
-                color: 'var(--primary-cyan)',
-                fontWeight: 600
-              }}
-            >
-              {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              {isExpanded ? 'Hide Sub-team' : `View Sub-team (${member.members.length})`}
-            </button>
-          )}
-        </div>
-
-        {/* Dynamic Sub-Team lists with picture cards */}
-        {hasTeam && isExpanded && (
-          <div style={{
-            borderTop: '1px solid var(--border-color)',
-            background: 'var(--bg-app)',
-            padding: '16px',
-            textAlign: 'left'
-          }}>
-            <span style={{
-              fontSize: '0.65rem',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              color: 'var(--text-muted)',
-              display: 'block',
-              marginBottom: '12px',
-              letterSpacing: '0.05em'
-            }}>
-              Sub-team Coordinators:
-            </span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {member.members.map((sub, sIdx) => (
-                <div key={sIdx} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  background: '#ffffff',
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                }}>
-                  {/* Sub-member photo sphere */}
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    overflow: 'hidden',
-                    background: '#f1f5f9',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    {sub.image && !sub.image.startsWith('db:') ? (
-                      <img src={sub.image} alt={sub.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <User size={16} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 600 }}>
-                      {sub.name || 'Slot Pending'}
-                    </span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
-                      {sub.role}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Expand / Collapse Indicator Badge */}
+        {hasTeam && (
+          <g transform={`translate(${x + radius * 0.6}, ${y + radius * 0.6})`}>
+            <circle cx="0" cy="0" r="10" fill={isExpanded ? 'var(--accent-purple)' : 'var(--primary-blue)'} />
+            <path 
+              d={isExpanded ? "M -4,0 L 4,0" : "M -4,0 L 4,0 M 0,-4 L 0,4"} 
+              stroke="#ffffff" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+            />
+          </g>
         )}
-      </div>
+
+        {/* Readability label inside foreignObject */}
+        <foreignObject x={x - 90} y={labelY} width="180" height="52" style={{ pointerEvents: 'none' }}>
+          <div style={{
+            textAlign: 'center',
+            fontFamily: 'var(--font-heading)',
+            fontSize: '0.78rem',
+            lineHeight: '1.15',
+            textShadow: '0 1.5px 3px #ffffff, 0 -1.5px 3px #ffffff, 1.5px 0 3px #ffffff, -1.5px 0 3px #ffffff',
+            padding: '1.5px'
+          }}>
+            <strong style={{ display: 'block', fontSize: '0.82rem', color: '#0f172a' }}>
+              {member.name || 'Profile Pending'}
+            </strong>
+            <span style={{ fontSize: '0.64rem', color: '#166534', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.01em' }}>
+              {member.role}
+            </span>
+          </div>
+        </foreignObject>
+      </g>
     );
   };
 
@@ -421,291 +420,500 @@ export default function About() {
       </section>
 
       {/* Core Team / Committee Section */}
-      <section className="section" style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(241, 245, 249, 0.4)', overflow: 'hidden' }}>
+      <section className="section" style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: '#faf8f5', overflow: 'hidden' }}>
         <div className="container">
-          <div className="section-title-wrapper" style={{ marginBottom: '50px' }}>
-            <h2 className="section-title">The Committee (2026-27)</h2>
-            <p className="section-subtitle">Structured as an organic technology tree representing coordinates of student leadership.</p>
+          <div className="section-title-wrapper" style={{ marginBottom: '40px', textAlign: 'center' }}>
+            <h2 className="section-title" style={{ color: '#3d2514' }}>The Committee Tree</h2>
+            <p className="section-subtitle" style={{ color: '#7c5e43' }}>
+              Enclosed entirely within a circular canopy, our coordinates split like organic branches representing levels of student coordination.
+            </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+          {/* Perfect circular container boundary */}
+          <div style={{
+            width: '100%',
+            maxWidth: '920px',
+            margin: '0 auto',
+            aspectRatio: '1',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, #fdfcf7 0%, #fcfaf2 70%, #f5f0e3 100%)',
+            border: '10px double #8b5a2b',
+            boxShadow: 'var(--shadow-premium), inset 0 0 60px rgba(139, 90, 43, 0.15)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            {/* The SVG Org Tree */}
+            <svg viewBox="0 0 1000 1000" width="100%" height="100%" style={{ display: 'block' }}>
+              {/* Outer Canopy Foliage frame (overlapping translucent green leaf circles) */}
+              <circle cx="200" cy="180" r="140" fill="#1b4332" opacity="0.06" className="canopy-foliage-leaf" />
+              <circle cx="350" cy="120" r="160" fill="#2d6a4f" opacity="0.05" className="canopy-foliage-leaf" />
+              <circle cx="500" cy="100" r="150" fill="#40916c" opacity="0.06" className="canopy-foliage-leaf" />
+              <circle cx="650" cy="120" r="160" fill="#2d6a4f" opacity="0.05" className="canopy-foliage-leaf" />
+              <circle cx="800" cy="180" r="140" fill="#1b4332" opacity="0.06" className="canopy-foliage-leaf" />
+              <circle cx="150" cy="300" r="120" fill="#52b788" opacity="0.05" className="canopy-foliage-leaf" />
+              <circle cx="850" cy="300" r="120" fill="#52b788" opacity="0.05" className="canopy-foliage-leaf" />
 
-            {/* LEVEL 1: Root - Faculty Coordinators */}
-            <div style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              {/* TREE STRUCTURE PATHS */}
+              {/* Roots at base */}
+              <path d="M 500,950 Q 420,970 380,985" stroke="#4d2f1d" strokeWidth="18" fill="none" strokeLinecap="round" opacity="0.9" />
+              <path d="M 500,950 Q 580,970 620,985" stroke="#4d2f1d" strokeWidth="18" fill="none" strokeLinecap="round" opacity="0.9" />
+              
+              {/* Main Trunk */}
+              <path d="M 500,960 C 495,840 505,740 500,680" stroke="#4d2f1d" strokeWidth="46" fill="none" strokeLinecap="round" />
+              {/* Bark Textures */}
+              <path d="M 490,955 Q 492,835 496,690" stroke="#331e12" strokeWidth="4" fill="none" opacity="0.5" />
+              <path d="M 508,945 Q 506,825 503,695" stroke="#331e12" strokeWidth="4" fill="none" opacity="0.5" />
 
-              {/* Horizontal bridge connecting the two coordinators */}
-              <div style={{
+              {/* Presidents branches */}
+              <path d="M 500,680 C 420,685 370,640 310,600" stroke="#4d2f1d" strokeWidth="22" fill="none" strokeLinecap="round" />
+              <path d="M 500,680 C 580,685 630,640 690,600" stroke="#4d2f1d" strokeWidth="22" fill="none" strokeLinecap="round" />
+              
+              {/* Main crown trunk */}
+              <path d="M 500,680 C 495,570 505,520 500,450" stroke="#4d2f1d" strokeWidth="24" fill="none" strokeLinecap="round" />
+
+              {/* Core Chairs coordinates calculations */}
+              {(() => {
+                const totalCore = team.core.length;
+                const startAngle = 195 * Math.PI / 180;
+                const endAngle = 345 * Math.PI / 180;
+                
+                const coreNodes = team.core.map((member, i) => {
+                  const angle = totalCore > 1 
+                    ? startAngle + (i / (totalCore - 1)) * (endAngle - startAngle)
+                    : (startAngle + endAngle) / 2;
+                  return {
+                    member,
+                    x: 500 + 350 * Math.cos(angle),
+                    y: 440 + 260 * Math.sin(angle),
+                    size: 70
+                  };
+                });
+
+                // Calculate sub-members coordinates dynamically
+                const expandedSubNodes = [];
+                const subTwigPaths = [];
+                coreNodes.forEach((node) => {
+                  const isExpanded = !!expandedCards[node.member.id];
+                  if (isExpanded && node.member.members && Array.isArray(node.member.members)) {
+                    const cx = node.x;
+                    const cy = node.y;
+                    const M = node.member.members.length;
+                    const centerAngle = Math.atan2(cy - 480, cx - 500);
+                    const spreadAngle = 65 * Math.PI / 180;
+                    
+                    node.member.members.forEach((sub, j) => {
+                      const angleOffset = M > 1 ? -spreadAngle/2 + (j / (M - 1)) * spreadAngle : 0;
+                      const subAngle = centerAngle + angleOffset;
+                      const sx = cx + 115 * Math.cos(subAngle);
+                      const sy = cy + 115 * Math.sin(subAngle);
+                      
+                      expandedSubNodes.push({
+                        member: sub,
+                        x: sx,
+                        y: sy,
+                        size: 50
+                      });
+                      
+                      subTwigPaths.push({
+                        cx,
+                        cy,
+                        sx,
+                        sy,
+                        id: `${node.member.id}-${j}`
+                      });
+                    });
+                  }
+                });
+
+                return (
+                  <>
+                    {/* Core Chairs branch paths */}
+                    {coreNodes.map((node) => {
+                      const cx = node.x;
+                      const cy = node.y;
+                      // Curve branch lines beautifully
+                      return (
+                        <path 
+                          key={`branch-${node.member.id}`}
+                          d={`M 500,450 Q ${(500 + cx) / 2},${(450 + cy) / 2 - 30} ${cx},${cy}`} 
+                          stroke="#5c3a21" 
+                          strokeWidth="12" 
+                          fill="none" 
+                          strokeLinecap="round" 
+                        />
+                      );
+                    })}
+
+                    {/* Twig paths to expanded sub-members */}
+                    {subTwigPaths.map((twig) => (
+                      <path 
+                        key={`twig-${twig.id}`}
+                        d={`M ${twig.cx},${twig.cy} Q ${(twig.cx + twig.sx) / 2},${(twig.cy + twig.sy) / 2} ${twig.sx},${twig.sy}`} 
+                        stroke="#7c5539" 
+                        strokeWidth="5" 
+                        fill="none" 
+                        strokeLinecap="round" 
+                        className="organic-twig-path"
+                      />
+                    ))}
+
+                    {/* RENDER MEMBER NODES */}
+                    {/* Faculty Nodes */}
+                    {team.faculty[0] && renderSvgNode(team.faculty[0], 380, 830, 95)}
+                    {team.faculty[1] && renderSvgNode(team.faculty[1], 620, 830, 95)}
+
+                    {/* Presidents Nodes */}
+                    {team.presidents[0] && renderSvgNode(team.presidents[0], 310, 600, 85)}
+                    {team.presidents[1] && renderSvgNode(team.presidents[1], 690, 600, 85)}
+
+                    {/* Core Chairs Nodes */}
+                    {coreNodes.map((node) => 
+                      renderSvgNode(
+                        node.member,
+                        node.x,
+                        node.y,
+                        node.size,
+                        node.member.members !== null,
+                        selectedTeam && selectedTeam.id === node.member.id,
+                        () => setSelectedTeam(node.member)
+                      )
+                    )}
+
+                    {/* Sub-members Nodes */}
+                    {expandedSubNodes.map((node) => 
+                      renderSvgNode(
+                        node.member,
+                        node.x,
+                        node.y,
+                        node.size,
+                        false,
+                        false,
+                        null
+                      )
+                    )}
+                  </>
+                );
+              })()}
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      {selectedTeam && (
+        <div 
+          className="modal-overlay"
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+          onClick={() => setSelectedTeam(null)}
+        >
+          {/* Modal Container: Perfect Circle */}
+          <div 
+            className="modal-container"
+            style={{
+              width: '90vw',
+              height: '90vw',
+              maxWidth: '680px',
+              maxHeight: '680px',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, #fdfcf7 0%, #fcfaf2 70%, #f5f0e3 100%)',
+              border: '10px double #8b5a2b',
+              boxShadow: '0 25px 60px -15px rgba(0,0,0,0.5), inset 0 0 50px rgba(139, 90, 43, 0.15)',
+              position: 'relative',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button 
+              onClick={() => setSelectedTeam(null)}
+              style={{
                 position: 'absolute',
-                bottom: '30px',
-                left: '25%',
-                right: '25%',
-                height: '2px',
-                backgroundColor: 'var(--primary-cyan)',
-                opacity: 0.4,
-                zIndex: 1
-              }} className="tree-bridge-desktop-top"></div>
-
-              {/* Pulsing junction point at center of Faculty Bridge */}
-              <div style={{
-                position: 'absolute',
-                bottom: '27px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: '8px',
-                height: '8px',
+                top: '35px',
+                right: '35px',
+                width: '40px',
+                height: '40px',
                 borderRadius: '50%',
-                backgroundColor: 'var(--primary-cyan)',
-                boxShadow: '0 0 10px var(--primary-cyan)',
-                zIndex: 3
-              }} className="tree-junction-desktop"></div>
-
-              <div style={{ display: 'flex', gap: '60px', justifyContent: 'center', flexWrap: 'wrap', width: '100%' }}>
-                {team.faculty.map((f, idx) => (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    {renderNodeCard(f)}
-                    <div style={{ width: '2px', height: '30px', backgroundColor: 'var(--primary-cyan)', opacity: 0.4 }} className="tree-connector-down"></div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Single connector dropping from bottom center of bridge down to Level 2 */}
-              <div style={{ width: '2px', height: '30px', backgroundColor: 'var(--primary-cyan)', opacity: 0.4 }} className="tree-connector-down"></div>
-            </div>
-
-            {/* LEVEL 2: Branches - Presidents & Vice Presidents */}
-            <div style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '40px' }}>
-
-              {/* Horizontal connecting bridge on desktop */}
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: '25%',
-                right: '25%',
-                height: '2px',
-                backgroundColor: 'var(--primary-cyan)',
-                opacity: 0.4,
-                zIndex: 1
-              }} className="tree-bridge-desktop"></div>
-
-              {/* Pulsing junction point at center of Presidents Bridge */}
-              <div style={{
-                position: 'absolute',
-                top: '-3px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--primary-cyan)',
-                boxShadow: '0 0 10px var(--primary-cyan)',
-                zIndex: 3
-              }} className="tree-junction-desktop"></div>
-
-              {/* Vertical connector drops */}
-              <div style={{ display: 'flex', justifyContent: 'space-around', width: '50%', minWidth: '300px' }} className="tree-connectors-desktop">
-                <div style={{ width: '2px', height: '30px', backgroundColor: 'var(--primary-cyan)', opacity: 0.4 }}></div>
-                <div style={{ width: '2px', height: '30px', backgroundColor: 'var(--primary-cyan)', opacity: 0.4 }}></div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '60px', justifyContent: 'center', flexWrap: 'wrap', width: '100%' }}>
-                {team.presidents.map((p, idx) => (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    {renderNodeCard(p)}
-                    <div style={{ width: '2px', height: '40px', backgroundColor: 'var(--primary-cyan)', opacity: 0.3 }} className="tree-connector-down"></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* LEVEL 3: Department Canopy & Dynamic Teams */}
-            <div style={{ width: '100%', borderTop: '1px dashed var(--border-color)', paddingTop: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{
+                background: '#ffffff',
+                border: '1px solid rgba(139, 90, 43, 0.2)',
+                color: '#8b5a2b',
+                fontSize: '1.2rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                color: 'var(--primary-cyan)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                marginBottom: '35px'
-              }}>
-                <Cpu size={16} /> Department Chairs & Sub-Teams
-              </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: '35px',
-                width: '100%',
-                justifyItems: 'center'
-              }}>
-                {team.core.map((member) => (
-                  <div key={member.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    {renderNodeCard(
-                      member,
-                      member.members !== null,
-                      !!expandedCards[member.id],
-                      () => toggleCard(member.id)
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+                justifyContent: 'center',
+                boxShadow: 'var(--shadow-sm)',
+                zIndex: 10,
+                transition: 'var(--transition-smooth)'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#8b5a2b';
+                e.target.style.color = '#ffffff';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#ffffff';
+                e.target.style.color = '#8b5a2b';
+              }}
+            >
+              ✕
+            </button>
 
+            {/* SVG radial structure */}
+            <svg viewBox="0 0 600 600" width="100%" height="100%" style={{ display: 'block' }}>
+              {/* Soft decorative background circles */}
+              <circle cx="300" cy="300" r="175" fill="none" stroke="#e6dfd1" strokeWidth="1.5" strokeDasharray="6 6" />
+              <circle cx="300" cy="300" r="240" fill="none" stroke="#e6dfd1" strokeWidth="1.5" opacity="0.5" />
+              
+              {/* Leaf silhouettes for natural decoration */}
+              <circle cx="300" cy="300" r="100" fill="#22c55e" opacity="0.04" />
+              
+              {/* BRANCH LINES connecting focal center to surrounding sub-members */}
+              {selectedTeam.members && Array.isArray(selectedTeam.members) && selectedTeam.members.map((sub, idx) => {
+                const M = selectedTeam.members.length;
+                const angle = (idx / M) * 2 * Math.PI - Math.PI / 2;
+                const sx = 300 + 175 * Math.cos(angle);
+                const sy = 300 + 175 * Math.sin(angle);
+                return (
+                  <path 
+                    key={`modal-twig-${idx}`}
+                    d={`M 300,300 Q ${(300 + sx) / 2 + 25 * Math.sin(angle)}, ${(300 + sy) / 2 - 25 * Math.cos(angle)} ${sx},${sy}`}
+                    stroke="#8b5a2b"
+                    strokeWidth="6"
+                    fill="none"
+                    strokeLinecap="round"
+                    className="organic-twig-path"
+                  />
+                );
+              })}
+
+              {/* RENDER NODES */}
+              {/* Center Focal Leader Node */}
+              {renderSvgNode(selectedTeam, 300, 300, 110, false, false, null, 'bottom')}
+
+              {/* Surrounding Sub-team Nodes */}
+              {selectedTeam.members && Array.isArray(selectedTeam.members) && selectedTeam.members.map((sub, idx) => {
+                const M = selectedTeam.members.length;
+                const angle = (idx / M) * 2 * Math.PI - Math.PI / 2;
+                const sx = 300 + 175 * Math.cos(angle);
+                const sy = 300 + 175 * Math.sin(angle);
+                const labelPos = sy < 280 ? 'top' : 'bottom';
+                return renderSvgNode(sub, sx, sy, 60, false, false, null, labelPos);
+              })}
+
+              {/* Decorative Banner/Text inside the circular view */}
+              <foreignObject x="100" y="30" width="400" height="70" style={{ pointerEvents: 'none' }}>
+                <div style={{
+                  textAlign: 'center',
+                  fontFamily: 'var(--font-heading)',
+                  color: '#2d1e12',
+                  textShadow: '0 2px 4px #ffffff, 0 -2px 4px #ffffff, 2px 0 4px #ffffff, -2px 0 4px #ffffff',
+                  lineHeight: '1.2'
+                }}>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    color: '#166534',
+                    letterSpacing: '0.1em',
+                    display: 'block'
+                  }}>
+                    Detailed Team View
+                  </span>
+                  <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '2px 0 0 0', color: '#3d2514' }}>
+                    {selectedTeam.role}
+                  </h3>
+                </div>
+              </foreignObject>
+
+              {/* Note for empty sub-team coordinate */}
+              {(!selectedTeam.members || selectedTeam.members.length === 0) && (
+                <foreignObject x="150" y="440" width="300" height="80" style={{ pointerEvents: 'none' }}>
+                  <div style={{
+                    textAlign: 'center',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.8rem',
+                    color: '#7c5e43',
+                    textShadow: '0 1px 3px #ffffff',
+                    padding: '8px',
+                    lineHeight: '1.4',
+                    border: '1px dashed rgba(139, 90, 43, 0.2)',
+                    borderRadius: '8px',
+                    background: 'rgba(253, 252, 247, 0.8)'
+                  }}>
+                    This role operates independently as a core representative with no subordinate sub-team coordinators.
+                  </div>
+                </foreignObject>
+              )}
+            </svg>
           </div>
         </div>
-      </section>
+      )}
 
-      {/* Contact Form Section */}
-      <section className="section">
-        <div className="container">
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1.1fr 1.9fr',
-            gap: '50px',
-            alignItems: 'center'
-          }} className="grid-2">
+      {lightboxIndex !== -1 && (
+        <Lightbox
+          images={lightboxPhotos}
+          currentIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(-1)}
+          onNavigate={(nextIdx) => setLightboxIndex(nextIdx)}
+        />
+      )}
 
-            {/* Contact coordinates info */}
-            <div>
-              <h2 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '15px', color: 'var(--text-main)' }}>Get in Touch</h2>
-              <p style={{ color: 'var(--text-muted)', lineHeight: '1.7', marginBottom: '30px' }}>
-                Have questions regarding event registrations, collaborations, or wish to present a seminar? Drop us a line and our committee will respond within 24 hours.
-              </p>
+      {zoomedMember && (
+        <div 
+          className="modal-overlay"
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 30000,
+            padding: '20px'
+          }}
+          onClick={() => setZoomedMember(null)}
+        >
+          {/* Modal Container: Perfect Circle/Square hybrid with elegant borders */}
+          <div 
+            className="modal-container"
+            style={{
+              width: '90vw',
+              maxWidth: '440px',
+              borderRadius: '24px',
+              background: 'radial-gradient(circle, #fdfcf7 0%, #fcfaf2 70%, #f5f0e3 100%)',
+              border: '6px double #8b5a2b',
+              boxShadow: '0 25px 60px -15px rgba(0,0,0,0.5), inset 0 0 50px rgba(139, 90, 43, 0.15)',
+              position: 'relative',
+              padding: '40px 24px 35px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '24px',
+              textAlign: 'center'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button 
+              onClick={() => setZoomedMember(null)}
+              aria-label="Close profile zoom"
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: '#ffffff',
+                border: '1px solid rgba(139, 90, 43, 0.2)',
+                color: '#8b5a2b',
+                fontSize: '1.1rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: 'var(--shadow-sm)',
+                transition: 'var(--transition-smooth)',
+                zIndex: 10
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#8b5a2b';
+                e.target.style.color = '#ffffff';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#ffffff';
+                e.target.style.color = '#8b5a2b';
+              }}
+            >
+              ✕
+            </button>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <div style={{
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '50%',
-                    background: 'rgba(2, 132, 199, 0.05)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--primary-cyan)'
-                  }}>
-                    <MapPin size={20} />
-                  </div>
-                  <div>
-                    <h4 style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>Location</h4>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>SRC, Kumbakonam</span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <div style={{
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '50%',
-                    background: 'rgba(2, 132, 199, 0.05)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--primary-cyan)'
-                  }}>
-                    <Mail size={20} />
-                  </div>
-                  <div>
-                    <h4 style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>Email</h4>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>elcomdaisece@gmail.com</span>
-                  </div>
-                </div>
-              </div>
+            {/* Circular Image Frame: Same style as original diagram */}
+            <div 
+              style={{
+                width: '240px',
+                height: '240px',
+                borderRadius: '50%',
+                border: '8px double #8b5a2b',
+                background: '#ffffff',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.15), inset 0 0 20px rgba(139, 90, 43, 0.1)',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden'
+              }}
+            >
+              <img
+                src={zoomedMember.image}
+                alt={zoomedMember.name}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: '50%',
+                  objectFit: 'cover'
+                }}
+              />
             </div>
 
-            {/* Contact Form Card */}
-            <div className="card" style={{ padding: '30px' }}>
-              {submitted ? (
-                <div style={{ textAlign: 'center', padding: '30px 0' }}>
-                  <div style={{
-                    width: '50px',
-                    height: '50px',
-                    borderRadius: '50%',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    color: '#10b981',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: '15px'
-                  }}>
-                    <CheckCircle2 size={30} />
-                  </div>
-                  <h3 style={{ color: 'var(--text-main)', fontSize: '1.25rem', marginBottom: '8px' }}>Message Transmitted!</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                    Thank you for reaching out. We will get back to you shortly.
-                  </p>
-                  <button onClick={() => setSubmitted(false)} className="btn btn-secondary" style={{ marginTop: '20px' }}>
-                    Send Another Message
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleContactSubmit}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }} className="grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Name</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        required
-                        value={formState.name}
-                        onChange={(e) => handleInputChange('name', e.target.value)}
-                        placeholder="Your Name"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Email</label>
-                      <input
-                        type="email"
-                        className="form-input"
-                        required
-                        value={formState.email}
-                        onChange={(e) => handleInputChange('email', e.target.value)}
-                        placeholder="email@example.com"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Subject</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      required
-                      value={formState.subject}
-                      onChange={(e) => handleInputChange('subject', e.target.value)}
-                      placeholder="Topic of interest"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Message</label>
-                    <textarea
-                      className="form-input"
-                      rows={5}
-                      required
-                      value={formState.message}
-                      onChange={(e) => handleInputChange('message', e.target.value)}
-                      placeholder="Write your details here..."
-                      style={{ resize: 'vertical', minHeight: '100px' }}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    style={{ width: '100%', marginTop: '10px' }}
-                    disabled={submitting}
-                  >
-                    {submitting ? 'Transmitting...' : 'Send Message'}
-                  </button>
-                </form>
+            {/* Name & Role Text Block */}
+            <div>
+              <h3 style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '1.65rem',
+                fontWeight: 800,
+                color: '#2d1e12',
+                margin: '0 0 8px 0',
+                lineHeight: '1.2'
+              }}>
+                {zoomedMember.name || 'Position Open'}
+              </h3>
+              <span style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                color: '#166534',
+                letterSpacing: '0.1em',
+                background: 'rgba(22, 101, 52, 0.08)',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                display: 'inline-block'
+              }}>
+                {zoomedMember.role}
+              </span>
+              {zoomedMember.bio && (
+                <p style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '0.88rem',
+                  color: '#7c5e43',
+                  lineHeight: '1.5',
+                  margin: '16px 0 0 0',
+                  maxWidth: '320px'
+                }}>
+                  {zoomedMember.bio}
+                </p>
               )}
             </div>
-
           </div>
         </div>
-      </section>
+      )}
     </div>
   );
 }

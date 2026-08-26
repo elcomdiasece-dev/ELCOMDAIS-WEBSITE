@@ -155,7 +155,7 @@ export default function CalendarPage() {
                 <SlidersHorizontal size={16} color="var(--primary-cyan)" />
                 <select
                   className="form-input"
-                  style={{ width: '160px', padding: '0.5rem 1rem' }}
+                  style={{ width: '160px' }}
                   value={selectedType}
                   onChange={(e) => setSelectedType(e.target.value)}
                 >
@@ -172,7 +172,7 @@ export default function CalendarPage() {
               {/* Month Selector */}
               <select
                 className="form-input"
-                style={{ width: '160px', padding: '0.5rem 1rem' }}
+                style={{ width: '160px' }}
                 value={selectedMonth}
                 onChange={(e) => {
                   const val = e.target.value;

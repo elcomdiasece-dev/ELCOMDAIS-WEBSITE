@@ -4,6 +4,7 @@ import { X, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
 export default function Lightbox({ images, currentIndex, onClose, onNavigate }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const slideTimer = useRef(null);
+  const backdropRef = useRef(null);
 
   // Clear timer on unmount
   useEffect(() => {
@@ -30,6 +31,29 @@ export default function Lightbox({ images, currentIndex, onClose, onNavigate }) 
     };
   }, [isPlaying, currentIndex]);
 
+  // Keyboard controls
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (e.key === 'ArrowLeft') {
+        handlePrev();
+      } else if (e.key === 'ArrowRight') {
+        handleNext();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Auto-focus backdrop container for screen reader and keyboard accessibility
+    if (backdropRef.current) {
+      backdropRef.current.focus();
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentIndex, images]);
+
   const handlePrev = () => {
     const prevIdx = (currentIndex - 1 + images.length) % images.length;
     onNavigate(prevIdx);
@@ -44,31 +68,44 @@ export default function Lightbox({ images, currentIndex, onClose, onNavigate }) 
   const currentImage = images[currentIndex];
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
-      backgroundColor: 'rgba(5, 7, 12, 0.95)',
-      zIndex: 1000,
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      alignItems: 'center',
-      backdropFilter: 'blur(8px)',
-      padding: '20px'
-    }}>
-      {/* Top Bar Controls */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
+    <div 
+      ref={backdropRef}
+      tabIndex={0}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Photo Gallery Viewer"
+      className="lightbox-overlay"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'rgba(5, 7, 12, 0.95)',
+        zIndex: 20000,
         display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
         alignItems: 'center',
-        gap: '15px',
-        zIndex: 1010
-      }}>
+        backdropFilter: 'blur(8px)',
+        padding: '20px',
+        outline: 'none'
+      }}
+    >
+      {/* Top Bar Controls */}
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '15px',
+          zIndex: 20010
+        }}
+      >
         <button
           onClick={() => setIsPlaying(!isPlaying)}
           className="btn btn-secondary"
@@ -90,14 +127,17 @@ export default function Lightbox({ images, currentIndex, onClose, onNavigate }) 
       </div>
 
       {/* Main Image Container */}
-      <div style={{
-        position: 'relative',
-        maxWidth: '90%',
-        maxHeight: '75vh',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center'
-      }}>
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          maxWidth: '90%',
+          maxHeight: '75vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}
+      >
         {/* Prev Arrow */}
         <button
           onClick={handlePrev}
@@ -123,8 +163,10 @@ export default function Lightbox({ images, currentIndex, onClose, onNavigate }) 
         </button>
 
         <img
+          key={currentImage.id || currentIndex}
           src={currentImage.url}
           alt={currentImage.caption || 'Gallery photo'}
+          className="lightbox-image"
           style={{
             maxWidth: '100%',
             maxHeight: '75vh',
@@ -160,12 +202,15 @@ export default function Lightbox({ images, currentIndex, onClose, onNavigate }) 
       </div>
 
       {/* Info Bar at Bottom */}
-      <div style={{
-        marginTop: '25px',
-        textAlign: 'center',
-        maxWidth: '600px',
-        color: '#fff'
-      }}>
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          marginTop: '25px',
+          textAlign: 'center',
+          maxWidth: '600px',
+          color: '#fff'
+        }}
+      >
         <p style={{ fontSize: '1rem', fontWeight: 500, marginBottom: '5px' }}>
           {currentImage.caption || `Photo from Album`}
         </p>
@@ -175,14 +220,17 @@ export default function Lightbox({ images, currentIndex, onClose, onNavigate }) 
       </div>
 
       {/* Thumbnails Strip */}
-      <div style={{
-        display: 'flex',
-        gap: '8px',
-        marginTop: '20px',
-        overflowX: 'auto',
-        maxWidth: '80%',
-        paddingBottom: '10px'
-      }}>
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          display: 'flex',
+          gap: '8px',
+          marginTop: '20px',
+          overflowX: 'auto',
+          maxWidth: '80%',
+          paddingBottom: '10px'
+        }}
+      >
         {images.map((img, idx) => (
           <img
             key={img.id || idx}
