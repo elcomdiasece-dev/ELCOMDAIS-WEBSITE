@@ -420,184 +420,128 @@ export default function About() {
       </section>
 
       {/* Core Team / Committee Section */}
-      <section className="section" style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: '#faf8f5', overflow: 'hidden' }}>
-        <div className="container">
-          <div className="section-title-wrapper" style={{ marginBottom: '40px', textAlign: 'center' }}>
-            <h2 className="section-title" style={{ color: '#3d2514' }}>The Committee Tree</h2>
+      <section className="section" style={{ borderBottom: '1px solid var(--border-color)', background: 'linear-gradient(160deg, #fdf8f0 0%, #faf5ec 60%, #f5ede0 100%)', paddingBottom: '70px' }}>
+        <div className="container" style={{ maxWidth: '1400px' }}>
+          <div className="section-title-wrapper" style={{ marginBottom: '48px', textAlign: 'center' }}>
+            <h2 className="section-title" style={{ color: '#3d2514' }}>The Committee</h2>
             <p className="section-subtitle" style={{ color: '#7c5e43' }}>
-              Enclosed entirely within a circular canopy, our coordinates split like organic branches representing levels of student coordination.
+              Our organizational hierarchy — from faculty advisors to core team coordinators.
             </p>
           </div>
 
-          {/* Perfect circular container boundary */}
+          {/* Org Chart Card */}
           <div style={{
-            width: '100%',
-            maxWidth: '920px',
-            margin: '0 auto',
-            aspectRatio: '1',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, #fdfcf7 0%, #fcfaf2 70%, #f5f0e3 100%)',
-            border: '10px double #8b5a2b',
-            boxShadow: 'var(--shadow-premium), inset 0 0 60px rgba(139, 90, 43, 0.15)',
-            position: 'relative',
-            overflow: 'hidden'
+            background: '#fdfcf7',
+            borderRadius: '20px',
+            border: '1px solid rgba(201, 169, 110, 0.3)',
+            boxShadow: '0 8px 48px rgba(139, 90, 43, 0.12), 0 2px 8px rgba(0,0,0,0.06)',
+            padding: '52px 32px 56px',
+            overflowX: 'auto'
           }}>
-            {/* The SVG Org Tree */}
-            <svg viewBox="0 0 1000 1000" width="100%" height="100%" style={{ display: 'block' }}>
-              {/* Outer Canopy Foliage frame (overlapping translucent green leaf circles) */}
-              <circle cx="200" cy="180" r="140" fill="#1b4332" opacity="0.06" className="canopy-foliage-leaf" />
-              <circle cx="350" cy="120" r="160" fill="#2d6a4f" opacity="0.05" className="canopy-foliage-leaf" />
-              <circle cx="500" cy="100" r="150" fill="#40916c" opacity="0.06" className="canopy-foliage-leaf" />
-              <circle cx="650" cy="120" r="160" fill="#2d6a4f" opacity="0.05" className="canopy-foliage-leaf" />
-              <circle cx="800" cy="180" r="140" fill="#1b4332" opacity="0.06" className="canopy-foliage-leaf" />
-              <circle cx="150" cy="300" r="120" fill="#52b788" opacity="0.05" className="canopy-foliage-leaf" />
-              <circle cx="850" cy="300" r="120" fill="#52b788" opacity="0.05" className="canopy-foliage-leaf" />
+            {(() => {
+              const secretary   = team.core.find(c => c.id === 'secretary');
+              const jsec1       = team.core.find(c => c.id === 'jsec1');
+              const jsec2       = team.core.find(c => c.id === 'jsec2');
+              const remainingCore = team.core.filter(c => c.id !== 'secretary' && c.id !== 'jsec1' && c.id !== 'jsec2');
+              const coreCount   = remainingCore.length;
 
-              {/* TREE STRUCTURE PATHS */}
-              {/* Roots at base */}
-              <path d="M 500,950 Q 420,970 380,985" stroke="#4d2f1d" strokeWidth="18" fill="none" strokeLinecap="round" opacity="0.9" />
-              <path d="M 500,950 Q 580,970 620,985" stroke="#4d2f1d" strokeWidth="18" fill="none" strokeLinecap="round" opacity="0.9" />
-              
-              {/* Main Trunk */}
-              <path d="M 500,960 C 495,840 505,740 500,680" stroke="#4d2f1d" strokeWidth="46" fill="none" strokeLinecap="round" />
-              {/* Bark Textures */}
-              <path d="M 490,955 Q 492,835 496,690" stroke="#331e12" strokeWidth="4" fill="none" opacity="0.5" />
-              <path d="M 508,945 Q 506,825 503,695" stroke="#331e12" strokeWidth="4" fill="none" opacity="0.5" />
+              // Core positions — evenly spread, centred at x=700
+              const CORE_R  = 35;
+              const CORE_Y  = 750;
+              const CORE_SP = coreCount > 1 ? Math.min(145, 1020 / (coreCount - 1)) : 0;
+              const coreStartX = 700 - ((coreCount - 1) * CORE_SP) / 2;
+              const corePositions = remainingCore.map((_, i) => coreStartX + i * CORE_SP);
 
-              {/* Presidents branches */}
-              <path d="M 500,680 C 420,685 370,640 310,600" stroke="#4d2f1d" strokeWidth="22" fill="none" strokeLinecap="round" />
-              <path d="M 500,680 C 580,685 630,640 690,600" stroke="#4d2f1d" strokeWidth="22" fill="none" strokeLinecap="round" />
-              
-              {/* Main crown trunk */}
-              <path d="M 500,680 C 495,570 505,520 500,450" stroke="#4d2f1d" strokeWidth="24" fill="none" strokeLinecap="round" />
+              const L  = '#c9a96e'; // line colour
+              const LW = 1.5;       // line width
 
-              {/* Core Chairs coordinates calculations */}
-              {(() => {
-                const totalCore = team.core.length;
-                const startAngle = 195 * Math.PI / 180;
-                const endAngle = 345 * Math.PI / 180;
-                
-                const coreNodes = team.core.map((member, i) => {
-                  const angle = totalCore > 1 
-                    ? startAngle + (i / (totalCore - 1)) * (endAngle - startAngle)
-                    : (startAngle + endAngle) / 2;
-                  return {
-                    member,
-                    x: 500 + 350 * Math.cos(angle),
-                    y: 440 + 260 * Math.sin(angle),
-                    size: 70
-                  };
-                });
+              return (
+                <svg viewBox="0 0 1400 900" width="100%" style={{ display: 'block', minWidth: '820px' }}>
 
-                // Calculate sub-members coordinates dynamically
-                const expandedSubNodes = [];
-                const subTwigPaths = [];
-                coreNodes.forEach((node) => {
-                  const isExpanded = !!expandedCards[node.member.id];
-                  if (isExpanded && node.member.members && Array.isArray(node.member.members)) {
-                    const cx = node.x;
-                    const cy = node.y;
-                    const M = node.member.members.length;
-                    const centerAngle = Math.atan2(cy - 480, cx - 500);
-                    const spreadAngle = 65 * Math.PI / 180;
-                    
-                    node.member.members.forEach((sub, j) => {
-                      const angleOffset = M > 1 ? -spreadAngle/2 + (j / (M - 1)) * spreadAngle : 0;
-                      const subAngle = centerAngle + angleOffset;
-                      const sx = cx + 115 * Math.cos(subAngle);
-                      const sy = cy + 115 * Math.sin(subAngle);
-                      
-                      expandedSubNodes.push({
-                        member: sub,
-                        x: sx,
-                        y: sy,
-                        size: 50
-                      });
-                      
-                      subTwigPaths.push({
-                        cx,
-                        cy,
-                        sx,
-                        sy,
-                        id: `${node.member.id}-${j}`
-                      });
-                    });
-                  }
-                });
+                  {/* ═══ CONNECTOR LINES (drawn first, behind nodes) ═══ */}
 
-                return (
-                  <>
-                    {/* Core Chairs branch paths */}
-                    {coreNodes.map((node) => {
-                      const cx = node.x;
-                      const cy = node.y;
-                      // Curve branch lines beautifully
-                      return (
-                        <path 
-                          key={`branch-${node.member.id}`}
-                          d={`M 500,450 Q ${(500 + cx) / 2},${(450 + cy) / 2 - 30} ${cx},${cy}`} 
-                          stroke="#5c3a21" 
-                          strokeWidth="12" 
-                          fill="none" 
-                          strokeLinecap="round" 
-                        />
-                      );
-                    })}
+                  {/* ── Faculty → President / VP ── */}
+                  {/* Left Faculty path: down from (450,130), horizontal at y=185, down to (700,210), trunk to (700,215) */}
+                  <path d="M 450,130 L 450,160 C 450,173.8 463.8,185 475,185 L 675,185 C 686.2,185 700,196.2 700,210 L 700,215" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Right Faculty path: down from (950,130), horizontal at y=185, down to (700,210), trunk to (700,215) */}
+                  <path d="M 950,130 L 950,160 C 950,173.8 936.2,185 925,185 L 725,185 C 713.8,185 700,196.2 700,210 L 700,215" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Left branch to President: curves left at y=230, down at x=450 to (450,255) */}
+                  <path d="M 700,215 C 700,223.3 693.3,230 685,230 L 465,230 C 456.7,230 450,236.7 450,245 L 450,255" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Right branch to VP: curves right at y=230, down at x=950 to (950,255) */}
+                  <path d="M 700,215 C 700,223.3 706.7,230 715,230 L 935,230 C 943.3,230 950,236.7 950,245 L 950,255" stroke={L} strokeWidth={LW} fill="none" />
 
-                    {/* Twig paths to expanded sub-members */}
-                    {subTwigPaths.map((twig) => (
+                  {/* ── President / VP → Sec / JSec ── */}
+                  {/* Left President path: down from (450,345), horizontal at y=400, down to (700,425), trunk to (700,435) */}
+                  <path d="M 450,345 L 450,375 C 450,388.8 463.8,400 475,400 L 675,400 C 686.2,400 700,411.2 700,425 L 700,435" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Right VP path: down from (950,345), horizontal at y=400, down to (700,425), trunk to (700,435) */}
+                  <path d="M 950,345 L 950,375 C 950,388.8 936.2,400 925,400 L 725,400 C 713.8,400 700,411.2 700,425 L 700,435" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Left branch to Secretary: curves left at y=450, down at x=250 to (250,480) */}
+                  <path d="M 700,435 C 700,443.3 693.3,450 685,450 L 265,450 C 257.5,450 250,457.5 250,465 L 250,520" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Center branch to JSec 1: straight down to (700,520) */}
+                  <line x1="700" y1="435" x2="700" y2="520" stroke={L} strokeWidth={LW} />
+                  {/* Right branch to JSec 2: curves right at y=450, down at x=1150 to (1150,520) */}
+                  <path d="M 700,435 C 700,443.3 706.7,450 715,450 L 1135,450 C 1142.5,450 1150,457.5 1150,465 L 1150,520" stroke={L} strokeWidth={LW} fill="none" />
+
+                  {/* ── Sec / JSec → Core Team ── */}
+                  {/* Left Sec path: down from (250,560), horizontal at y=615, down to (700,640), trunk to (700,650) */}
+                  <path d="M 250,560 L 250,590 C 250,603.8 263.8,615 275,615 L 675,615 C 686.2,615 700,626.2 700,640 L 700,650" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Center JSec 1 path: straight down to (700,650) */}
+                  <line x1="700" y1="560" x2="700" y2="650" stroke={L} strokeWidth={LW} />
+                  {/* Right JSec 2 path: down from (1150,560), horizontal at y=615, down to (700,640), trunk to (700,650) */}
+                  <path d="M 1150,560 L 1150,590 C 1150,603.8 1136.2,615 1125,615 L 725,615 C 713.8,615 700,626.2 700,640 L 700,650" stroke={L} strokeWidth={LW} fill="none" />
+                  {/* Rounded orthogonal paths branching out to each Core Team member at top y=715 */}
+                  {corePositions.map((x, i) => {
+                    const pathD = x < 700
+                      ? `M 700,650 C 700,658.3 693.3,665 685,665 L ${x + 15},665 C ${x + 6.7},665 ${x},671.7 ${x},680 L ${x},715`
+                      : x > 700
+                        ? `M 700,650 C 700,658.3 706.7,665 715,665 L ${x - 15},665 C ${x - 6.7},665 ${x},671.7 ${x},680 L ${x},715`
+                        : `M 700,650 L 700,715`;
+                    return (
                       <path 
-                        key={`twig-${twig.id}`}
-                        d={`M ${twig.cx},${twig.cy} Q ${(twig.cx + twig.sx) / 2},${(twig.cy + twig.sy) / 2} ${twig.sx},${twig.sy}`} 
-                        stroke="#7c5539" 
-                        strokeWidth="5" 
+                        key={`core-line-${i}`}
+                        d={pathD} 
+                        stroke={L} 
+                        strokeWidth={LW} 
                         fill="none" 
-                        strokeLinecap="round" 
-                        className="organic-twig-path"
                       />
-                    ))}
+                    );
+                  })}
 
-                    {/* RENDER MEMBER NODES */}
-                    {/* Faculty Nodes */}
-                    {team.faculty[0] && renderSvgNode(team.faculty[0], 380, 830, 95)}
-                    {team.faculty[1] && renderSvgNode(team.faculty[1], 620, 830, 95)}
+                  {/* ═══ NODES ═══ */}
 
-                    {/* Presidents Nodes */}
-                    {team.presidents[0] && renderSvgNode(team.presidents[0], 310, 600, 85)}
-                    {team.presidents[1] && renderSvgNode(team.presidents[1], 690, 600, 85)}
+                  {/* Level 1 — Faculty */}
+                  {team.faculty[0] && renderSvgNode(team.faculty[0], 450, 80, 100)}
+                  {team.faculty[1] && renderSvgNode(team.faculty[1], 950, 80, 100)}
 
-                    {/* Core Chairs Nodes */}
-                    {coreNodes.map((node) => 
-                      renderSvgNode(
-                        node.member,
-                        node.x,
-                        node.y,
-                        node.size,
-                        node.member.members !== null,
-                        selectedTeam && selectedTeam.id === node.member.id,
-                        () => setSelectedTeam(node.member)
-                      )
-                    )}
+                  {/* Level 2 — President + Vice-President */}
+                  {team.presidents[0] && renderSvgNode(team.presidents[0], 450, 300, 90)}
+                  {team.presidents[1] && renderSvgNode(team.presidents[1], 950, 300, 90)}
 
-                    {/* Sub-members Nodes */}
-                    {expandedSubNodes.map((node) => 
-                      renderSvgNode(
-                        node.member,
-                        node.x,
-                        node.y,
-                        node.size,
-                        false,
-                        false,
-                        null
-                      )
-                    )}
-                  </>
-                );
-              })()}
-            </svg>
+                  {/* Level 3 — Secretary + Joint Secretaries */}
+                  {secretary && renderSvgNode(secretary,  250,  520, 80, false, false, null)}
+                  {jsec1     && renderSvgNode(jsec1,      700,  520, 80, false, false, null)}
+                  {jsec2     && renderSvgNode(jsec2,     1150,  520, 80, false, false, null)}
+
+                  {/* Level 4 — Core Team */}
+                  {remainingCore.map((member, i) =>
+                    renderSvgNode(
+                      member,
+                      corePositions[i],
+                      CORE_Y,
+                      CORE_R * 2,
+                      !!(member.members !== null && Array.isArray(member.members)),
+                      !!(selectedTeam && selectedTeam.id === member.id),
+                      () => setSelectedTeam(member)
+                    )
+                  )}
+
+                </svg>
+              );
+            })()}
           </div>
         </div>
       </section>
+
 
       {selectedTeam && (
         <div 
