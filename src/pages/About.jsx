@@ -430,14 +430,7 @@ export default function About() {
           </div>
 
           {/* Org Chart Card */}
-          <div style={{
-            background: '#fdfcf7',
-            borderRadius: '20px',
-            border: '1px solid rgba(201, 169, 110, 0.3)',
-            boxShadow: '0 8px 48px rgba(139, 90, 43, 0.12), 0 2px 8px rgba(0,0,0,0.06)',
-            padding: '52px 32px 56px',
-            overflowX: 'auto'
-          }}>
+          <div className="org-chart-card">
             {(() => {
               const secretary   = team.core.find(c => c.id === 'secretary');
               const jsec1       = team.core.find(c => c.id === 'jsec1');

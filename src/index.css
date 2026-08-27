@@ -1193,6 +1193,16 @@ tr:hover td {
     padding: var(--space-lg);
     border-bottom: 1px solid var(--border-color);
     box-shadow: var(--shadow-lg);
+    z-index: 1001;
+  }
+  .mobile-nav.open {
+    display: flex;
+  }
+  
+  @media (max-width: 480px) {
+    .logo-tagline {
+      display: none;
+    }
   }
 }
 
@@ -1351,3 +1361,24 @@ textarea.form-input {
   stroke: var(--primary-cyan);
   stroke-width: 4px;
 }
+
+/* Org Chart Card Layout for Mobile */
+.org-chart-card {
+  background: #fdfcf7;
+  border-radius: 20px;
+  border: 1px solid rgba(201, 169, 110, 0.3);
+  box-shadow: 0 8px 48px rgba(139, 90, 43, 0.12), 0 2px 8px rgba(0,0,0,0.06);
+  padding: 52px 32px 56px;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* smooth momentum scrolling on mobile */
+}
+
+@media (max-width: 768px) {
+  .org-chart-card {
+    padding: 24px 12px 32px;
+    border-radius: 12px;
+  }
+}
+
