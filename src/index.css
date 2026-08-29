@@ -1248,11 +1248,17 @@ tr:hover td {
 .node-orbit-glow {
   transform-origin: center;
   animation: node-pulse 3s infinite ease-in-out;
+  will-change: transform;
 }
 
 .organic-tree-node-group {
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  transform-box: fill-box;
+  transform-box: view-box;
+  will-change: transform;
+}
+
+.organic-tree-node-group:hover .node-orbit-glow {
+  animation-play-state: paused;
 }
 
 .organic-tree-node-group:hover {

@@ -646,7 +646,7 @@ export default function About() {
                 const angle = (idx / M) * 2 * Math.PI - Math.PI / 2;
                 const sx = 300 + 175 * Math.cos(angle);
                 const sy = 300 + 175 * Math.sin(angle);
-                const labelPos = sy < 280 ? 'top' : 'bottom';
+                const labelPos = sy < 180 ? 'bottom' : (sy < 280 ? 'top' : 'bottom');
                 return renderSvgNode(sub, sx, sy, 60, false, false, null, labelPos);
               })}
 
