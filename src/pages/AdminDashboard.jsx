@@ -1207,6 +1207,12 @@ export default function AdminDashboard() {
                           <option value="Symposium">Symposium</option>
                           <option value="Inauguration">Inauguration</option>
                           <option value="Valediction">Valediction</option>
+                          <option value="Student Lecture Series 1">Student Lecture Series 1</option>
+                          <option value="Student Lecture Series 2">Student Lecture Series 2</option>
+                          <option value="Student Lecture Series 3">Student Lecture Series 3</option>
+                          <option value="Faculty Lecture Series 1">Faculty Lecture Series 1</option>
+                          <option value="Faculty Lecture Series 2">Faculty Lecture Series 2</option>
+                          <option value="Faculty Lecture Series 3">Faculty Lecture Series 3</option>
                         </select>
                       </div>
                     </div>
