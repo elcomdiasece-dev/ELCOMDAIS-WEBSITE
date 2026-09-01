@@ -678,9 +678,12 @@ export default function AdminDashboard() {
     reader.readAsDataURL(file);
   };
 
-  const handleDocUpload = (e, docField, nameField) => {
-    const file = e.target.files[0];
+  const handleDocUpload = async (e, docField, nameField) => {
+    let file = e.target.files[0];
     if (!file) return;
+
+    // Convert HEIC/HEIF images to JPEG automatically
+    file = await convertHeicIfNeeded(file);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -1332,7 +1335,7 @@ export default function AdminDashboard() {
                           </label>
                           <input
                             type="file"
-                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.heic,.heif,image/*"
                             className="form-input"
                             onChange={(e) => handleDocUpload(e, 'guidelinesDoc', 'guidelinesDocName')}
                           />
@@ -1371,7 +1374,7 @@ export default function AdminDashboard() {
                           </label>
                           <input
                             type="file"
-                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.heic,.heif,image/*"
                             className="form-input"
                             onChange={(e) => handleDocUpload(e, 'tracksDoc', 'tracksDocName')}
                           />
