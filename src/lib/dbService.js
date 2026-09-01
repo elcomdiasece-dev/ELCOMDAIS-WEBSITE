@@ -381,7 +381,11 @@ export const dbService = {
       } catch (e) {}
     }
 
-    // Save raw base64 cover images into IndexedDB and keep lightweight pointer keys for localStorage & Supabase
+    // Preserve the original base64 image BEFORE swapping to db: pointer,
+    // so we can sync the real image data to Supabase for cross-browser visibility.
+    const originalCoverImage = cleanEvent.coverImage || '';
+
+    // Save raw base64 cover images into IndexedDB and keep lightweight pointer keys for localStorage
     if (cleanEvent.coverImage && cleanEvent.coverImage.startsWith('data:')) {
       const imageKey = `event_image_${cleanEvent.id}`;
       await saveDBImage(imageKey, cleanEvent.coverImage);
@@ -401,13 +405,21 @@ export const dbService = {
       console.warn('localStorage saveEvent note:', e);
     }
 
-    // 2. Sync portable event (with real coverImage data!) to Supabase cloud database
+    // 2. Sync portable event with real coverImage data to Supabase so ALL browsers/devices can display it
     if (supabase) {
       try {
+        // Build a portable copy of the events list where db: pointers are replaced with real base64
+        // for the event that was just saved, so Supabase stores the actual image.
         const fullEventsList = JSON.parse(localStorage.getItem('elcomdais_events') || '[]');
+        const portableList = fullEventsList.map(e => {
+          if (e.id === cleanEvent.id && originalCoverImage && originalCoverImage.startsWith('data:')) {
+            return { ...e, coverImage: originalCoverImage };
+          }
+          return e;
+        });
         await supabase
           .from('settings')
-          .upsert({ key: 'events', value: JSON.stringify(fullEventsList), updatedAt: new Date().toISOString() });
+          .upsert({ key: 'events', value: JSON.stringify(portableList), updatedAt: new Date().toISOString() });
 
         const ultraMinimalPayload = {
           id: cleanEvent.id,
@@ -418,7 +430,10 @@ export const dbService = {
         };
         if (cleanEvent.startDate) ultraMinimalPayload.startDate = cleanEvent.startDate;
         if (cleanEvent.endDate) ultraMinimalPayload.endDate = cleanEvent.endDate;
-        if (cleanEvent.coverImage) {
+        // Use the real base64 image (not the db: pointer) so Supabase events table stores the actual image
+        if (originalCoverImage && originalCoverImage.startsWith('data:')) {
+          ultraMinimalPayload.coverImage = originalCoverImage;
+        } else if (cleanEvent.coverImage) {
           ultraMinimalPayload.coverImage = cleanEvent.coverImage;
         }
 
