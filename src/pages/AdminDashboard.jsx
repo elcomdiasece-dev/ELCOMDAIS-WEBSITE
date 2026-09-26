@@ -556,10 +556,8 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteEvent = async (id) => {
-    if (window.confirm('Are you sure you want to delete this event? This will also remove all associated registrations.')) {
-      await dbService.deleteEvent(id);
-      loadDashboardData();
-    }
+    await dbService.deleteEvent(id);
+    loadDashboardData();
   };
 
   const handleSaveEvent = async (e) => {
@@ -794,16 +792,13 @@ export default function AdminDashboard() {
     const eventTitle = getEventTitleById(selectedRegEventId);
     if (eventRegs.length === 0) return;
 
-    const csvLines = ['Registration ID,Registered At,Type,Team Name,Member,Regno,Name,Email,Year,Section,Phone,Department,Year of Study'];
+    const csvLines = ['Team Name,Member,Regno,Name,Email,Year,Section,Phone,Department,Year of Study'];
 
     eventRegs.forEach(r => {
       const data = JSON.parse(r.data || '{}');
       if (data.registrationType === 'team' && Array.isArray(data.teamMembers)) {
         data.teamMembers.forEach((m, idx) => {
           const row = [
-            r.id,
-            new Date(r.registeredAt).toLocaleString(),
-            'Team',
             `"${(data.teamName || '').replace(/"/g, '""')}"`,
             idx + 1,
             `"${(m.regno || '').replace(/"/g, '""')}"`,
@@ -819,9 +814,6 @@ export default function AdminDashboard() {
         });
       } else {
         const row = [
-          r.id,
-          new Date(r.registeredAt).toLocaleString(),
-          'Individual',
           '',
           1,
           `"${(data.regno || '').replace(/"/g, '""')}"`,
@@ -853,10 +845,8 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteRegistration = async (id) => {
-    if (window.confirm('Are you sure you want to delete this registration?')) {
-      await dbService.deleteRegistration(id);
-      loadDashboardData();
-    }
+    await dbService.deleteRegistration(id);
+    loadDashboardData();
   };
 
   const handleSaveRegistration = async (e) => {
@@ -971,10 +961,8 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteAlbum = async (id) => {
-    if (window.confirm('Are you sure you want to delete this album? This will remove the folder and all its images.')) {
-      await dbService.deleteAlbum(id);
-      loadDashboardData();
-    }
+    await dbService.deleteAlbum(id);
+    loadDashboardData();
   };
 
   const handleSaveAlbum = async (e) => {
