@@ -624,7 +624,7 @@ export const dbService = {
 
   async deleteRegistration(id) {
     memCache.registrations = null;
-    // 1. ALWAYS remove from local storage
+    // 1. ALWAYS remove from local storage first
     let regs = [];
     try {
       regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
@@ -636,18 +636,37 @@ export const dbService = {
       localStorage.setItem('elcomdais_registrations', JSON.stringify(filtered));
     } catch (e) {}
 
-    // 2. Delete from Supabase in background
+    // 2. Delete from Supabase — use locally-filtered list for settings update
+    // (avoids re-fetching stale data before Supabase delete propagates)
     if (supabase) {
       try {
         await supabase.from('registrations').delete().eq('id', id);
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Supabase deleteRegistration table delete failed:', e);
+      }
       try {
-        const fullList = await this.getRegistrations();
-        const remaining = fullList.filter(r => r.id !== id);
+        // Build combined list: merge remote entries not in local, then remove deleted id
+        const { data: settingsData } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'registrations')
+          .maybeSingle();
+        let remoteList = [];
+        if (settingsData?.value) {
+          try { remoteList = JSON.parse(settingsData.value); } catch (_) {}
+        }
+        // Merge, then strip deleted id from both sources
+        const mergedIds = new Set(filtered.map(r => r.id));
+        const merged = [...filtered];
+        for (const r of remoteList) {
+          if (r.id !== id && !mergedIds.has(r.id)) merged.push(r);
+        }
         await supabase
           .from('settings')
-          .upsert({ key: 'registrations', value: JSON.stringify(remaining), updatedAt: new Date().toISOString() });
-      } catch (e) {}
+          .upsert({ key: 'registrations', value: JSON.stringify(merged), updatedAt: new Date().toISOString() });
+      } catch (e) {
+        console.warn('Supabase deleteRegistration settings sync failed:', e);
+      }
     }
 
     return true;
