@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { dbService } from '../lib/dbService';
 import {
   Cpu,
   Calendar,
@@ -19,48 +20,28 @@ import {
 
 export default function Home() {
   const [activeDot, setActiveDot] = useState(0);
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
 
-  // Mockup events list to match the image exactly
-  const mockupEvents = [
-    {
-      id: 'mock-1',
-      title: 'Inauguration Ceremony',
-      tag: 'Inauguration',
-      tagClass: 'purple',
-      date: 'AUG 14, 2026 02:00 PM',
-      image: '/auditorium_hall.jpg',
-      description: 'Kickstart the academic year with inspiration, vision and new beginnings.',
-      location: 'Auditorium',
-      status: 'Concluded',
-      link: '/calendar'
-    },
-    {
-      id: 'mock-2',
-      title: 'Paper Presentation',
-      tag: 'Competition',
-      tagClass: 'blue',
-      date: 'AUG 31, 2026 09:00 AM',
-      image: '/paper_presentation_bg.jpg',
-      description: 'Present your research, share ideas and get recognized.',
-      location: 'Room 201',
-      registrations: '0 / 150 Registered',
-      action: 'Register Now',
-      link: '/events/elcomdais-2026-national-level-technical-symposium'
-    },
-    {
-      id: 'mock-3',
-      title: 'Poster Presentation',
-      tag: 'Competition',
-      tagClass: 'purple',
-      date: 'SEP 25, 2026 09:13 AM',
-      image: '/poster_presentation_bg.jpg',
-      description: 'Showcase your creativity and innovation through impactful posters.',
-      location: 'Room 201',
-      registrations: '0 / 150 Registered',
-      action: 'Register Now',
-      link: '/events/elcomdais-2026-national-level-technical-symposium'
+  // Load live events from the calendar/database
+  useEffect(() => {
+    async function loadEvents() {
+      try {
+        const data = await dbService.getEvents();
+        const published = data.filter(e => e.isPublished !== false);
+        // Sort by start date ascending, show the first 3
+        const sorted = [...published].sort(
+          (a, b) => new Date(a.startDate) - new Date(b.startDate)
+        );
+        setUpcomingEvents(sorted.slice(0, 3));
+      } catch (err) {
+        console.error('Error loading home events:', err);
+      } finally {
+        setEventsLoading(false);
+      }
     }
-  ];
+    loadEvents();
+  }, []);
 
   return (
     <div>
@@ -209,52 +190,81 @@ export default function Home() {
           </div>
 
           <div className="grid-3">
-            {mockupEvents.map((event) => (
-              <div className="event-card" key={event.id}>
-                <div className="event-card-image-wrapper">
-                  <img src={event.image} alt={event.title} className="event-card-img" />
-                  <span className={`event-card-tag ${event.tagClass === 'blue' ? 'blue' : ''}`}>
-                    {event.tag}
-                  </span>
-                  <div className="event-card-date">
-                    <Calendar size={13} />
-                    <span>{event.date}</span>
-                  </div>
-                </div>
-
-                <div className="event-card-content">
-                  <h3 className="event-card-title">{event.title}</h3>
-                  <p className="event-card-desc">{event.description}</p>
-                  
-                  <div className="event-card-footer">
-                    <div className="event-card-info-item">
-                      <MapPin size={15} color="var(--primary-blue)" />
-                      <span>{event.location}</span>
-                    </div>
-
-                    {event.status === 'Concluded' ? (
-                      <span className="event-card-status-concluded">Concluded</span>
-                    ) : (
-                      <div className="event-card-info-item">
-                        <Users size={15} color="var(--primary-blue)" />
-                        <span>{event.registrations}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {event.status !== 'Concluded' && (
-                    <div style={{ marginTop: '1.2rem' }}>
-                      <Link to={event.link} className={`btn ${event.tagClass === 'purple' ? 'btn-purple' : 'btn-primary'}`} style={{ width: '100%', gap: '8px', padding: '0.6rem' }}>
-                        Register Now
-                        <span className="btn-icon-wrapper">
-                          <ChevronRight size={14} />
-                        </span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
+            {eventsLoading ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                Loading events...
               </div>
-            ))}
+            ) : upcomingEvents.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px' }}>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>No upcoming events scheduled yet.</p>
+                <Link to="/calendar" className="btn btn-secondary">View Calendar</Link>
+              </div>
+            ) : (
+              upcomingEvents.map((event) => {
+                const dateObj = new Date(event.startDate);
+                const isPast = dateObj < new Date();
+                const formattedDate = dateObj.toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric', year: 'numeric'
+                }).toUpperCase() + ' ' + dateObj.toLocaleTimeString('en-US', {
+                  hour: '2-digit', minute: '2-digit'
+                });
+                const fallbackImg = 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80';
+
+                return (
+                  <div className="event-card" key={event.id}>
+                    <div className="event-card-image-wrapper">
+                      <img
+                        src={event.coverImage || fallbackImg}
+                        alt={event.title}
+                        className="event-card-img"
+                      />
+                      <span className="event-card-tag">
+                        {event.type}
+                      </span>
+                      <div className="event-card-date">
+                        <Calendar size={13} />
+                        <span>{formattedDate}</span>
+                      </div>
+                    </div>
+
+                    <div className="event-card-content">
+                      <h3 className="event-card-title">{event.title}</h3>
+                      <p className="event-card-desc">{event.description}</p>
+
+                      <div className="event-card-footer">
+                        <div className="event-card-info-item">
+                          <MapPin size={15} color="var(--primary-blue)" />
+                          <span>{event.venue || 'TBD'}</span>
+                        </div>
+                        {isPast ? (
+                          <span className="event-card-status-concluded">Concluded</span>
+                        ) : (
+                          <div className="event-card-info-item">
+                            <Users size={15} color="var(--primary-blue)" />
+                            <span>0 / {event.capacity || 50} Registered</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {!isPast && (
+                        <div style={{ marginTop: '1.2rem' }}>
+                          <Link
+                            to={`/events/${event.slug}`}
+                            className="btn btn-primary"
+                            style={{ width: '100%', gap: '8px', padding: '0.6rem' }}
+                          >
+                            Register Now
+                            <span className="btn-icon-wrapper">
+                              <ChevronRight size={14} />
+                            </span>
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           {/* Carousel Pagination Dots */}

@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
-import { Calendar, MapPin, Users, HelpCircle, User, Check, AlertCircle, Clock, ChevronDown, FileText, Download, ExternalLink } from 'lucide-react';
+import { Calendar, MapPin, Users, HelpCircle, User, Check, AlertCircle, Clock, ChevronDown, FileText, Download, ExternalLink, UserCheck } from 'lucide-react';
+
+// Empty member template for team registration
+const emptyMember = () => ({ regno: '', name: '', email: '', classYear: '', section: '' });
 
 export default function EventDetailsPage() {
   const { slug } = useParams();
@@ -18,6 +21,11 @@ export default function EventDetailsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [successData, setSuccessData] = useState(null);
   const [formError, setFormError] = useState('');
+
+  // Team / Individual mode selection
+  const [selectedRegMode, setSelectedRegMode] = useState('individual');
+  const [teamName, setTeamName] = useState('');
+  const [teamMembers, setTeamMembers] = useState([emptyMember(), emptyMember()]);
 
   // Countdown timer state
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, expired: true });
@@ -42,6 +50,18 @@ export default function EventDetailsPage() {
         // Load registrations count
         const regs = await dbService.getRegistrations(evt.id);
         setRegistrations(regs);
+
+        // Determine initial registration mode
+        const regType = evt.registrationType || 'individual';
+        if (regType === 'team') {
+          setSelectedRegMode('team');
+        } else {
+          setSelectedRegMode('individual');
+        }
+
+        // Initialize team members to match event teamSize
+        const size = parseInt(evt.teamSize) || 2;
+        setTeamMembers(Array.from({ length: size }, () => emptyMember()));
 
         // Prepopulate form fields state & sanitize options
         let rawFields = JSON.parse(evt.formFields || '[]');
@@ -70,6 +90,20 @@ export default function EventDetailsPage() {
 
     loadEventDetails();
   }, [slug]);
+
+  // When team mode changes to team, resize teamMembers array to match event teamSize
+  useEffect(() => {
+    if (event && selectedRegMode === 'team') {
+      const size = parseInt(event.teamSize) || 2;
+      setTeamMembers(prev => {
+        if (prev.length === size) return prev;
+        if (prev.length < size) {
+          return [...prev, ...Array.from({ length: size - prev.length }, () => emptyMember())];
+        }
+        return prev.slice(0, size);
+      });
+    }
+  }, [selectedRegMode, event]);
 
   // Countdown clock timer logic
   useEffect(() => {
@@ -132,6 +166,11 @@ export default function EventDetailsPage() {
   const isPast = new Date(event.startDate) < new Date();
   const isFull = registrations.length >= event.capacity;
 
+  const regType = event.registrationType || 'individual';
+  const isTeamEvent = regType === 'team';
+  const isBothEvent = regType === 'both';
+  const teamSize = parseInt(event.teamSize) || 2;
+
   const handleInputChange = (fieldId, val) => {
     setFormData(prev => ({
       ...prev,
@@ -139,36 +178,153 @@ export default function EventDetailsPage() {
     }));
   };
 
+  const handleTeamMemberChange = (idx, field, val) => {
+    setTeamMembers(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: val };
+      return updated;
+    });
+  };
+
+  // Check for duplicate regno or email within the SAME event registrations
+  const checkDuplicates = (allRegs, eventId, regnos, emails) => {
+    const existing = allRegs.filter(r => r.eventId === eventId);
+    for (const reg of existing) {
+      let parsed = {};
+      try { parsed = JSON.parse(reg.data || '{}'); } catch (e) {}
+      const existingRegnos = [];
+      const existingEmails = [];
+      if (parsed.teamMembers && Array.isArray(parsed.teamMembers)) {
+        parsed.teamMembers.forEach(m => {
+          if (m.regno) existingRegnos.push(m.regno.toLowerCase().trim());
+          if (m.email) existingEmails.push(m.email.toLowerCase().trim());
+        });
+      } else {
+        if (parsed.regno) existingRegnos.push(parsed.regno.toLowerCase().trim());
+        if (parsed.email) existingEmails.push(parsed.email.toLowerCase().trim());
+      }
+      for (const r of regnos) {
+        if (r && existingRegnos.includes(r.toLowerCase().trim())) {
+          return `Duplicate: Register No. "${r}" is already registered for this event.`;
+        }
+      }
+      for (const em of emails) {
+        if (em && existingEmails.includes(em.toLowerCase().trim())) {
+          return `Duplicate: Email "${em}" is already registered for this event.`;
+        }
+      }
+    }
+    return null;
+  };
+
   const handleSubmitRegistration = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setFormError('');
 
-    // Validation
-    for (const f of fields) {
-      if (f.required && (!formData[f.id] || formData[f.id].toString().trim() === '')) {
-        setFormError(`Please fill in all required fields: ${f.label}`);
-        setSubmitting(false);
-        return;
-      }
-      if (f.type === 'email') {
-        const emailValue = (formData[f.id] || '').toString().trim();
-        const sastraEmailRegex = /^\d+@sastra\.ac\.in$/i;
-        if (!sastraEmailRegex.test(emailValue)) {
-          setFormError('Please enter a valid SASTRA email address (Format: Regno@sastra.ac.in).');
+    try {
+      // Fetch latest registrations to check for duplicates
+      const allRegs = await dbService.getRegistrations();
+
+      if (selectedRegMode === 'team') {
+        // --- TEAM REGISTRATION VALIDATION ---
+        if (!teamName.trim()) {
+          setFormError('Please enter a Team Name.');
           setSubmitting(false);
           return;
         }
-      }
-    }
 
-    try {
-      const response = await dbService.registerUser(event.id, formData);
-      setSuccessData(response);
-      
-      // Update registrations counter in local state
-      const updatedRegs = await dbService.getRegistrations(event.id);
-      setRegistrations(updatedRegs);
+        for (let i = 0; i < teamMembers.length; i++) {
+          const m = teamMembers[i];
+          if (!m.regno.trim()) { setFormError(`Member ${i + 1}: Register No. is required.`); setSubmitting(false); return; }
+          if (!m.name.trim()) { setFormError(`Member ${i + 1}: Full Name is required.`); setSubmitting(false); return; }
+          if (!m.email.trim()) { setFormError(`Member ${i + 1}: Email is required.`); setSubmitting(false); return; }
+          const sastraEmailRegex = /^\d+@sastra\.ac\.in$/i;
+          if (!sastraEmailRegex.test(m.email.trim())) {
+            setFormError(`Member ${i + 1}: Please enter a valid SASTRA email (RegNo@sastra.ac.in).`);
+            setSubmitting(false);
+            return;
+          }
+          if (!m.classYear) { setFormError(`Member ${i + 1}: Year / Class is required.`); setSubmitting(false); return; }
+          if (!m.section) { setFormError(`Member ${i + 1}: Section is required.`); setSubmitting(false); return; }
+        }
+
+        // Intra-team duplicate check
+        const regnos = teamMembers.map(m => m.regno.trim());
+        const emails = teamMembers.map(m => m.email.trim());
+        if (new Set(regnos.map(r => r.toLowerCase())).size !== regnos.length) {
+          setFormError('Duplicate Register Numbers found within your team. Each member must have a unique Register No.');
+          setSubmitting(false);
+          return;
+        }
+        if (new Set(emails.map(em => em.toLowerCase())).size !== emails.length) {
+          setFormError('Duplicate emails found within your team. Each member must have a unique email.');
+          setSubmitting(false);
+          return;
+        }
+
+        // Cross-event duplicate check for same event
+        const dupError = checkDuplicates(allRegs, event.id, regnos, emails);
+        if (dupError) { setFormError(dupError); setSubmitting(false); return; }
+
+        // Validate leader extra fields
+        for (const f of fields.filter(fi => !['name', 'email', 'section'].includes(fi.id))) {
+          if (f.required && (!formData[f.id] || formData[f.id].toString().trim() === '')) {
+            setFormError(`Please fill in the team leader's ${f.label}.`);
+            setSubmitting(false);
+            return;
+          }
+        }
+
+        const payload = {
+          teamName: teamName.trim(),
+          registrationType: 'team',
+          teamSize: teamMembers.length,
+          teamMembers: teamMembers.map(m => ({
+            regno: m.regno.trim(),
+            name: m.name.trim(),
+            email: m.email.trim(),
+            classYear: m.classYear,
+            section: m.section
+          })),
+          ...Object.fromEntries(Object.entries(formData).filter(([k]) => !['name', 'email', 'section'].includes(k)))
+        };
+
+        const response = await dbService.registerUser(event.id, payload);
+        setSuccessData(response);
+        const updatedRegs = await dbService.getRegistrations(event.id);
+        setRegistrations(updatedRegs);
+
+      } else {
+        // --- INDIVIDUAL REGISTRATION VALIDATION ---
+        for (const f of fields) {
+          if (f.required && (!formData[f.id] || formData[f.id].toString().trim() === '')) {
+            setFormError(`Please fill in all required fields: ${f.label}`);
+            setSubmitting(false);
+            return;
+          }
+          if (f.type === 'email') {
+            const emailValue = (formData[f.id] || '').toString().trim();
+            const sastraEmailRegex = /^\d+@sastra\.ac\.in$/i;
+            if (!sastraEmailRegex.test(emailValue)) {
+              setFormError('Please enter a valid SASTRA email address (Format: Regno@sastra.ac.in).');
+              setSubmitting(false);
+              return;
+            }
+          }
+        }
+
+        // Cross-event duplicate check for same event
+        const emailVal = (formData['email'] || '').trim();
+        const regnoVal = (formData['regno'] || '').trim();
+        const dupError = checkDuplicates(allRegs, event.id, regnoVal ? [regnoVal] : [], emailVal ? [emailVal] : []);
+        if (dupError) { setFormError(dupError); setSubmitting(false); return; }
+
+        const response = await dbService.registerUser(event.id, { ...formData, registrationType: 'individual' });
+        setSuccessData(response);
+        const updatedRegs = await dbService.getRegistrations(event.id);
+        setRegistrations(updatedRegs);
+      }
     } catch (err) {
       setFormError(err.message || 'An error occurred during registration. Please try again.');
     } finally {
@@ -265,6 +421,23 @@ export default function EventDetailsPage() {
                   textShadow: '0 1px 2px rgba(0,0,0,0.5)'
                 }}>
                   {event.type}
+                </span>
+                {/* Registration type badge */}
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  backgroundColor: isTeamEvent ? 'rgba(168,85,247,0.2)' : isBothEvent ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)',
+                  color: isTeamEvent ? '#a855f7' : isBothEvent ? '#f59e0b' : '#10b981',
+                  border: `1px solid ${isTeamEvent ? 'rgba(168,85,247,0.4)' : isBothEvent ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}`,
+                  textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+                }}>
+                  {isTeamEvent ? `👥 Team of ${teamSize}` : isBothEvent ? `🔀 Individual / Team of ${teamSize}` : '👤 Individual'}
                 </span>
 
                 {event.coverImage && (
@@ -625,6 +798,16 @@ export default function EventDetailsPage() {
                       </span>
                     </div>
                   </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <UserCheck size={18} color={isTeamEvent ? '#a855f7' : isBothEvent ? '#f59e0b' : '#10b981'} />
+                    <div>
+                      <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-main)' }}>Registration Type</span>
+                      <span style={{ color: isTeamEvent ? '#a855f7' : isBothEvent ? '#f59e0b' : '#10b981', fontWeight: 600 }}>
+                        {isTeamEvent ? `Team (${teamSize} members fixed)` : isBothEvent ? `Individual or Team of ${teamSize}` : 'Individual'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Registration Countdown Timer */}
@@ -719,9 +902,11 @@ export default function EventDetailsPage() {
                     }}>
                       <Check size={20} />
                     </div>
-                    <h4 style={{ color: 'var(--text-main)', fontSize: '1.1rem', marginBottom: '8px' }}>Registration Success!</h4>
+                    <h4 style={{ color: 'var(--text-main)', fontSize: '1.1rem', marginBottom: '8px' }}>Registration Successful!</h4>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                      Your seat is reserved. A confirmation email has been dispatched.
+                      {selectedRegMode === 'team'
+                        ? `Team "${teamName || 'Your Team'}" has been registered successfully!`
+                        : 'Your seat is reserved. A confirmation email has been dispatched.'}
                     </p>
                     <div style={{
                       padding: '10px',
@@ -756,37 +941,212 @@ export default function EventDetailsPage() {
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                      {fields.map(f => (
-                        <div key={f.id} className="form-group" style={{ margin: 0 }}>
-                          <label className="form-label">
-                            {f.label} {f.required && <span style={{ color: '#ef4444' }}>*</span>}
-                          </label>
-
-                          {f.type === 'select' ? (
-                            <select
-                              value={formData[f.id] || ''}
-                              onChange={(e) => handleInputChange(f.id, e.target.value)}
-                              className="form-input"
-                              required={f.required}
-                            >
-                              {f.options?.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type={f.type}
-                              value={formData[f.id] || ''}
-                              onChange={(e) => handleInputChange(f.id, e.target.value)}
-                              className="form-input"
-                              placeholder={f.label}
-                              required={f.required}
-                            />
-                          )}
+                    {/* INDIVIDUAL / TEAM TOGGLE (for 'both' events) */}
+                    {isBothEvent && (
+                      <div style={{ marginBottom: '18px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Registration Mode
+                        </label>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRegMode('individual')}
+                            style={{
+                              flex: 1, padding: '9px', borderRadius: '8px',
+                              border: selectedRegMode === 'individual' ? '2px solid #10b981' : '2px solid var(--border-color)',
+                              background: selectedRegMode === 'individual' ? 'rgba(16,185,129,0.07)' : 'transparent',
+                              color: selectedRegMode === 'individual' ? '#10b981' : 'var(--text-muted)',
+                              cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <UserCheck size={14} /> Individual
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRegMode('team')}
+                            style={{
+                              flex: 1, padding: '9px', borderRadius: '8px',
+                              border: selectedRegMode === 'team' ? '2px solid #a855f7' : '2px solid var(--border-color)',
+                              background: selectedRegMode === 'team' ? 'rgba(168,85,247,0.07)' : 'transparent',
+                              color: selectedRegMode === 'team' ? '#a855f7' : 'var(--text-muted)',
+                              cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <Users size={14} /> Team of {teamSize}
+                          </button>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
+
+                    {/* INDIVIDUAL REGISTRATION FIELDS */}
+                    {selectedRegMode === 'individual' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                        {fields.map(f => (
+                          <div key={f.id} className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">
+                              {f.label} {f.required && <span style={{ color: '#ef4444' }}>*</span>}
+                            </label>
+                            {f.type === 'select' ? (
+                              <select
+                                value={formData[f.id] || ''}
+                                onChange={(e) => handleInputChange(f.id, e.target.value)}
+                                className="form-input"
+                                required={f.required}
+                              >
+                                {f.options?.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type={f.type}
+                                value={formData[f.id] || ''}
+                                onChange={(e) => handleInputChange(f.id, e.target.value)}
+                                className="form-input"
+                                placeholder={f.label}
+                                required={f.required}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* TEAM REGISTRATION FIELDS */}
+                    {selectedRegMode === 'team' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {/* Team Name */}
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Team Name <span style={{ color: '#ef4444' }}>*</span></label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. Circuit Breakers"
+                            value={teamName}
+                            onChange={(e) => setTeamName(e.target.value)}
+                            required
+                          />
+                        </div>
+
+                        {/* Leader extra fields (phone, dept, year) */}
+                        {fields.filter(f => !['name', 'email', 'section'].includes(f.id)).map(f => (
+                          <div key={f.id} className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">
+                              {f.label} (Team Leader) {f.required && <span style={{ color: '#ef4444' }}>*</span>}
+                            </label>
+                            {f.type === 'select' ? (
+                              <select
+                                value={formData[f.id] || ''}
+                                onChange={(e) => handleInputChange(f.id, e.target.value)}
+                                className="form-input"
+                                required={f.required}
+                              >
+                                {f.options?.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type={f.type}
+                                value={formData[f.id] || ''}
+                                onChange={(e) => handleInputChange(f.id, e.target.value)}
+                                className="form-input"
+                                placeholder={f.label}
+                                required={f.required}
+                              />
+                            )}
+                          </div>
+                        ))}
+
+                        {/* Team Members Panel */}
+                        <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.2)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                            <Users size={15} color="#a855f7" />
+                            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-main)' }}>
+                              Team Members ({teamMembers.length} required)
+                            </span>
+                          </div>
+
+                          {teamMembers.map((member, idx) => (
+                            <div
+                              key={idx}
+                              style={{
+                                padding: '12px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-color)',
+                                background: 'var(--card-bg, #fff)',
+                                marginBottom: idx !== teamMembers.length - 1 ? '10px' : 0
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                                <span style={{
+                                  width: '20px', height: '20px', borderRadius: '50%',
+                                  background: 'rgba(168,85,247,0.15)', color: '#a855f7',
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '0.7rem', fontWeight: 800
+                                }}>{idx + 1}</span>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                  {idx === 0 ? 'Member 1 (Team Leader)' : `Member ${idx + 1}`}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                  <label className="form-label" style={{ fontSize: '0.73rem' }}>Register No. <span style={{ color: '#ef4444' }}>*</span></label>
+                                  <input type="text" className="form-input" placeholder="e.g. 121001234"
+                                    value={member.regno}
+                                    onChange={(e) => handleTeamMemberChange(idx, 'regno', e.target.value)}
+                                    required style={{ padding: '0.42rem 0.65rem', fontSize: '0.83rem' }} />
+                                </div>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                  <label className="form-label" style={{ fontSize: '0.73rem' }}>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
+                                  <input type="text" className="form-input" placeholder="Full Name"
+                                    value={member.name}
+                                    onChange={(e) => handleTeamMemberChange(idx, 'name', e.target.value)}
+                                    required style={{ padding: '0.42rem 0.65rem', fontSize: '0.83rem' }} />
+                                </div>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                  <label className="form-label" style={{ fontSize: '0.73rem' }}>SASTRA Email <span style={{ color: '#ef4444' }}>*</span></label>
+                                  <input type="email" className="form-input" placeholder="RegNo@sastra.ac.in"
+                                    value={member.email}
+                                    onChange={(e) => handleTeamMemberChange(idx, 'email', e.target.value)}
+                                    required style={{ padding: '0.42rem 0.65rem', fontSize: '0.83rem' }} />
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                  <div className="form-group" style={{ margin: 0 }}>
+                                    <label className="form-label" style={{ fontSize: '0.73rem' }}>Year / Class <span style={{ color: '#ef4444' }}>*</span></label>
+                                    <select className="form-input" value={member.classYear}
+                                      onChange={(e) => handleTeamMemberChange(idx, 'classYear', e.target.value)}
+                                      required style={{ padding: '0.42rem 0.65rem', fontSize: '0.83rem' }}>
+                                      <option value="">Select</option>
+                                      <option value="1st Year">1st Year</option>
+                                      <option value="2nd Year">2nd Year</option>
+                                      <option value="3rd Year">3rd Year</option>
+                                      <option value="4th Year">4th Year</option>
+                                    </select>
+                                  </div>
+                                  <div className="form-group" style={{ margin: 0 }}>
+                                    <label className="form-label" style={{ fontSize: '0.73rem' }}>Section <span style={{ color: '#ef4444' }}>*</span></label>
+                                    <select className="form-input" value={member.section}
+                                      onChange={(e) => handleTeamMemberChange(idx, 'section', e.target.value)}
+                                      required style={{ padding: '0.42rem 0.65rem', fontSize: '0.83rem' }}>
+                                      <option value="">Section</option>
+                                      <option value="A">A</option>
+                                      <option value="B">B</option>
+                                      <option value="C">C</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <button
                       type="submit"
@@ -794,7 +1154,11 @@ export default function EventDetailsPage() {
                       className="btn btn-primary"
                       style={{ width: '100%', marginTop: '20px' }}
                     >
-                      {submitting ? 'Registering...' : 'Submit Registration'}
+                      {submitting
+                        ? 'Registering...'
+                        : selectedRegMode === 'team'
+                          ? `Register Team (${teamMembers.length} Members)`
+                          : 'Submit Registration'}
                     </button>
                   </form>
                 )}

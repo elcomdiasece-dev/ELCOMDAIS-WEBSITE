@@ -182,6 +182,8 @@ export default function AdminDashboard() {
     description: '',
     prerequisites: '',
     bannerPosition: 'center',
+    registrationType: 'individual',
+    teamSize: 2,
     faq: [],
     formFields: []
   });
@@ -500,6 +502,8 @@ export default function AdminDashboard() {
       guidelinesDocName: '',
       tracksDoc: '',
       tracksDocName: '',
+      registrationType: 'individual',
+      teamSize: 2,
       faq: [
         { q: 'Will certificates be provided?', a: 'Yes, all participants will receive a Certificate of Participation.' }
       ],
@@ -543,6 +547,8 @@ export default function AdminDashboard() {
       guidelinesDocName: evt.guidelinesDocName || '',
       tracksDoc: evt.tracksDoc || '',
       tracksDocName: evt.tracksDocName || '',
+      registrationType: evt.registrationType || 'individual',
+      teamSize: evt.teamSize || 2,
       faq: JSON.parse(evt.faq || '[]'),
       formFields: sanitizedFields
     });
@@ -788,22 +794,47 @@ export default function AdminDashboard() {
     const eventTitle = getEventTitleById(selectedRegEventId);
     if (eventRegs.length === 0) return;
 
-    // Build columns dynamically based on custom fields submitted
-    const headers = ['Registration ID', 'Registered At'];
-    const sample = JSON.parse(eventRegs[0].data || '{}');
-    const customKeys = Object.keys(sample);
-    const allHeaders = [...headers, ...customKeys];
-
-    const csvLines = [allHeaders.join(',')];
+    const csvLines = ['Registration ID,Registered At,Type,Team Name,Member,Regno,Name,Email,Year,Section,Phone,Department,Year of Study'];
 
     eventRegs.forEach(r => {
       const data = JSON.parse(r.data || '{}');
-      const row = [
-        r.id,
-        new Date(r.registeredAt).toLocaleString(),
-        ...customKeys.map(k => `"${(data[k] || '').toString().replace(/"/g, '""')}"`)
-      ];
-      csvLines.push(row.join(','));
+      if (data.registrationType === 'team' && Array.isArray(data.teamMembers)) {
+        data.teamMembers.forEach((m, idx) => {
+          const row = [
+            r.id,
+            new Date(r.registeredAt).toLocaleString(),
+            'Team',
+            `"${(data.teamName || '').replace(/"/g, '""')}"`,
+            idx + 1,
+            `"${(m.regno || '').replace(/"/g, '""')}"`,
+            `"${(m.name || '').replace(/"/g, '""')}"`,
+            `"${(m.email || '').replace(/"/g, '""')}"`,
+            `"${(m.classYear || '').replace(/"/g, '""')}"`,
+            `"${(m.section || '').replace(/"/g, '""')}"`,
+            `"${(data.phone || '').replace(/"/g, '""')}"`,
+            `"${(data.department || '').replace(/"/g, '""')}"`,
+            `"${(data.year || '').replace(/"/g, '""')}"`
+          ];
+          csvLines.push(row.join(','));
+        });
+      } else {
+        const row = [
+          r.id,
+          new Date(r.registeredAt).toLocaleString(),
+          'Individual',
+          '',
+          1,
+          `"${(data.regno || '').replace(/"/g, '""')}"`,
+          `"${(data.name || '').replace(/"/g, '""')}"`,
+          `"${(data.email || '').replace(/"/g, '""')}"`,
+          '',
+          `"${(data.section || '').replace(/"/g, '""')}"`,
+          `"${(data.phone || '').replace(/"/g, '""')}"`,
+          `"${(data.department || '').replace(/"/g, '""')}"`,
+          `"${(data.year || '').replace(/"/g, '""')}"`
+        ];
+        csvLines.push(row.join(','));
+      }
     });
 
     const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -842,10 +873,21 @@ export default function AdminDashboard() {
     const rawFiles = Array.from(e.target.files);
     if (!rawFiles.length) return;
 
-    for (const rawFile of rawFiles) {
+    // Helper: convert a file to a compressed base64 JPEG string
+    const processFile = async (rawFile) => {
+      // 1. Convert HEIC → JPEG blob if needed
       const file = await convertHeicIfNeeded(rawFile);
-      const reader = new FileReader();
-      reader.onload = (event) => {
+
+      // 2. Read file as data URL (promisified)
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // 3. Draw onto canvas to resize + compress (promisified)
+      return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
@@ -855,30 +897,45 @@ export default function AdminDashboard() {
           let height = img.height;
 
           if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
+            if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
           } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
+            if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
           }
 
-          canvas.width = width;
-          canvas.height = height;
+          canvas.width = Math.round(width);
+          canvas.height = Math.round(height);
 
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          // Compress to 85% JPEG quality (~45KB each)
-          const base64 = canvas.toDataURL('image/jpeg', 0.85);
-          setAlbumImages(prev => [...prev, base64]);
+          // Compress to 85% JPEG quality (~45 KB each)
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
         };
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+    };
+
+    try {
+      // Process all files in parallel — allSettled means one failure won't block the others
+      const settled = await Promise.allSettled(rawFiles.map(processFile));
+      const successful = settled
+        .filter(r => r.status === 'fulfilled' && r.value)
+        .map(r => r.value);
+      const failedCount = settled.length - successful.length;
+
+      if (successful.length > 0) {
+        setAlbumImages(prev => [...prev, ...successful]);
+      }
+      if (failedCount > 0) {
+        alert(`${failedCount} image(s) could not be processed and were skipped. The rest were loaded successfully.`);
+      }
+      if (successful.length === 0) {
+        alert('None of the images could be processed. Please try converting them to JPEG/PNG first and uploading again.');
+      }
+    } catch (err) {
+      console.error('Error processing album images:', err);
+      alert('An unexpected error occurred. Please try again.');
     }
   };
 
@@ -1270,6 +1327,43 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
+                    {/* REGISTRATION TYPE: INDIVIDUAL OR TEAM */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px', padding: '16px', borderRadius: '8px', backgroundColor: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.2)' }} className="grid-2">
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Users size={14} color="var(--primary-cyan)" /> Registration Mode *
+                        </label>
+                        <select
+                          className="form-input"
+                          value={eventForm.registrationType || 'individual'}
+                          onChange={(e) => setEventForm(prev => ({ ...prev, registrationType: e.target.value }))}
+                        >
+                          <option value="individual">Individual</option>
+                          <option value="team">Team</option>
+                          <option value="both">Both (Individual or Team)</option>
+                        </select>
+                      </div>
+
+                      {(eventForm.registrationType === 'team' || eventForm.registrationType === 'both') && (
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Fixed Team Size (members) *</label>
+                          <input
+                            type="number"
+                            required
+                            min={2}
+                            max={10}
+                            className="form-input"
+                            value={eventForm.teamSize || 2}
+                            onChange={(e) => setEventForm(prev => ({ ...prev, teamSize: parseInt(e.target.value) || 2 }))}
+                            placeholder="e.g. 3"
+                          />
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                            All teams must have exactly this many members.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="form-group">
                       <label className="form-label">Speaker / Facilitator</label>
                       <input
@@ -1527,6 +1621,7 @@ export default function AdminDashboard() {
                         <tbody>
                           {getRegsForSelectedEvent().map(reg => {
                             const parsed = JSON.parse(reg.data || '{}');
+                            const isTeamReg = parsed.registrationType === 'team' && Array.isArray(parsed.teamMembers);
                             return (
                               <tr key={reg.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                 <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: 'var(--primary-cyan)' }}>{reg.id}</td>
@@ -1534,14 +1629,43 @@ export default function AdminDashboard() {
                                   {new Date(reg.registeredAt).toLocaleString()}
                                 </td>
                                 <td style={{ padding: '12px 16px' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                    {Object.entries(parsed).map(([key, val]) => (
-                                      <span key={key}>
-                                        <strong style={{ color: 'var(--text-main)', textTransform: 'capitalize' }}>{key}: </strong>
-                                        {val}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  {isTeamReg ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(168,85,247,0.12)', color: '#a855f7', padding: '2px 7px', borderRadius: '10px', border: '1px solid rgba(168,85,247,0.25)' }}>
+                                          TEAM
+                                        </span>
+                                        <strong style={{ color: 'var(--text-main)', fontSize: '0.88rem' }}>{parsed.teamName || 'Unnamed Team'}</strong>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({parsed.teamMembers.length} members)</span>
+                                      </div>
+                                      {parsed.phone && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>📞 {parsed.phone}</span>}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '6px', borderLeft: '2px solid rgba(168,85,247,0.3)' }}>
+                                        {parsed.teamMembers.map((m, mIdx) => (
+                                          <div key={mIdx} style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                            <span style={{ color: '#a855f7', fontWeight: 700, marginRight: '4px' }}>#{mIdx + 1}</span>
+                                            <strong style={{ color: 'var(--text-main)' }}>{m.name}</strong>
+                                            {' · '}{m.regno}
+                                            {' · '}{m.email}
+                                            {' · '}{m.classYear} {m.section && `Sec ${m.section}`}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '2px 7px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                                          INDIVIDUAL
+                                        </span>
+                                      </div>
+                                      {Object.entries(parsed).filter(([k]) => k !== 'registrationType').map(([key, val]) => (
+                                        <span key={key}>
+                                          <strong style={{ color: 'var(--text-main)', textTransform: 'capitalize' }}>{key}: </strong>
+                                          {val}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </td>
                                 <td style={{ padding: '12px 16px' }}>
                                   <div style={{ display: 'flex', gap: '8px' }}>
