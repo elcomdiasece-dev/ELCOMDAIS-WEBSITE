@@ -99,9 +99,6 @@ export default function AdminLogin() {
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
-                Prototype user: <code>admin</code>
-              </span>
             </div>
 
             <div className="form-group" style={{ marginBottom: '25px' }}>
@@ -118,9 +115,6 @@ export default function AdminLogin() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
-                Prototype pass: <code>password123</code>
-              </span>
             </div>
 
             <button
@@ -136,9 +130,6 @@ export default function AdminLogin() {
 
         {/* Back Links */}
         <div style={{ textAlign: 'center', marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <Link to="/register-admin" style={{ fontSize: '0.85rem', color: 'var(--primary-cyan)', fontWeight: 600 }}>
-            Create New Admin Account
-          </Link>
           <Link to="/" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
             ← Return to Homepage
           </Link>

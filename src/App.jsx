@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './lib/supabaseClient';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -8,16 +9,24 @@ import EventDetailsPage from './pages/EventDetailsPage';
 import GalleryPage from './pages/GalleryPage';
 import About from './pages/About';
 import AdminLogin from './pages/AdminLogin';
-import AdminRegister from './pages/AdminRegister';
 import AdminDashboard from './pages/AdminDashboard';
 
-// Protected Route Wrapper for Admin Panel
+// Protected Route: a localStorage flag is forgeable, so verify a real Supabase session
 const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('elcomdais_admin_token');
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
-  return children;
+  const [ok, setOk] = useState(null);
+  useEffect(() => {
+    (supabase ? supabase.auth.getSession() : Promise.resolve({ data: {} }))
+      .then(({ data }) => {
+        if (!data?.session) {
+          localStorage.removeItem('elcomdais_admin_token');
+          localStorage.removeItem('elcomdais_admin_user');
+        }
+        setOk(!!data?.session);
+      })
+      .catch(() => setOk(false));
+  }, []);
+  if (ok === null) return null;
+  return ok ? children : <Navigate to="/login" replace />;
 };
 
 export default function App() {
@@ -35,7 +44,6 @@ export default function App() {
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/about" element={<About />} />
             <Route path="/login" element={<AdminLogin />} />
-            <Route path="/register-admin" element={<AdminRegister />} />
             <Route 
               path="/admin" 
               element={

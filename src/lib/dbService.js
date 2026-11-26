@@ -182,7 +182,6 @@ const initLocalDb = () => {
   migrateKey('elcomdias_albums', 'elcomdais_albums');
   migrateKey('elcomdias_images', 'elcomdais_images');
   migrateKey('elcomdias_registrations', 'elcomdais_registrations');
-  migrateKey('elcomdias_admins', 'elcomdais_admins');
   migrateKey('elcomdias_committee', 'elcomdais_committee');
 
   const cleanDb = (key, seedPattern) => {
@@ -207,16 +206,11 @@ const initLocalDb = () => {
   cleanDb('elcomdais_albums', /^alb-[1-2]$/);
   cleanDb('elcomdais_images', /^img-[1-4]$/);
   cleanDb('elcomdais_registrations', /^reg-[1-4]$/);
-
-  // Admin credentials: username=admin, password=password123
-  if (!localStorage.getItem('elcomdais_admins')) {
-    localStorage.setItem('elcomdais_admins', JSON.stringify([
-      { username: 'admin', password: 'password123', name: 'Core Admin' }
-    ]));
-  }
 };
 
 initLocalDb();
+// Purge plaintext admin credentials left in browsers by earlier versions.
+['elcomdais_admins', 'elcomdias_admins'].forEach(k => localStorage.removeItem(k));
 
 // --- GLOBAL MEMORY CACHE ---
 const memCache = {
@@ -475,66 +469,36 @@ export const dbService = {
   },
 
   // --- REGISTRATIONS ---
+  // Source of truth is the Supabase `registrations` table. Public visitors can only
+  // insert and call the count/duplicate RPCs (see supabase_rls.sql); only admins can read.
   async getRegistrations() {
-    if (memCache.registrations) {
-      return memCache.registrations;
-    }
-
-    let remoteRegs = [];
-    if (supabase) {
-      try {
-        const { data: settingsData } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'registrations')
-          .maybeSingle();
-
-        if (settingsData && settingsData.value) {
-          try {
-            remoteRegs = JSON.parse(settingsData.value);
-          } catch (e) {}
-        }
-
-        const { data: tableData, error } = await supabase
-          .from('registrations')
-          .select('*')
-          .order('registeredAt', { ascending: false });
-
-        if (!error && tableData && tableData.length > 0) {
-          const remoteIds = new Set(remoteRegs.map(r => r.id));
-          for (const item of tableData) {
-            if (!remoteIds.has(item.id)) remoteRegs.push(item);
-          }
-        }
-      } catch (e) {
-        console.warn('Supabase getRegistrations failed, using local DB fallback', e);
-      }
-    }
-
-    const localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
-    const existingIds = new Set(remoteRegs.map(r => r.id));
-    let hasNewLocal = false;
-
-    for (const loc of localRegs) {
-      if (!existingIds.has(loc.id)) {
-        remoteRegs.push(loc);
-        hasNewLocal = true;
-      }
-    }
-
-    memCache.registrations = remoteRegs;
-
-    if (hasNewLocal && supabase) {
-      try {
-        await supabase
-          .from('settings')
-          .upsert({ key: 'registrations', value: JSON.stringify(remoteRegs), updatedAt: new Date().toISOString() });
-      } catch (e) {}
-    }
-
-    return remoteRegs;
+    if (memCache.registrations) return memCache.registrations;
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('registrations')
+      .select('*')
+      .order('registeredAt', { ascending: false });
+    if (error) throw error;
+    memCache.registrations = data || [];
+    return memCache.registrations;
   },
 
+  async getRegistrationCount(eventId) {
+    if (!supabase) return 0;
+    const { data, error } = await supabase.rpc('registration_count', { p_event_id: eventId });
+    return error ? 0 : data || 0;
+  },
+
+  // Returns the first register no./email already registered for this event, or null.
+  async findTakenValue(eventId, values) {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('registration_taken', {
+      p_event_id: eventId,
+      p_values: values.filter(Boolean)
+    });
+    if (error) throw error;
+    return data || null;
+  },
 
   async registerUser(eventId, formData) {
     return this.registerForEvent(eventId, formData);
@@ -542,133 +506,29 @@ export const dbService = {
 
   async registerForEvent(eventId, formData) {
     memCache.registrations = null;
+    if (!supabase) throw new Error('Registration service unavailable. Please try again later.');
     const newReg = {
-      id: `reg-${Date.now()}`,
+      id: `reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       eventId,
       data: JSON.stringify(formData),
       registeredAt: new Date().toISOString()
     };
-
-    // 1. ALWAYS save locally first
-    let localRegs = [];
-    try {
-      localRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
-    } catch (e) {
-      localRegs = [];
-    }
-    localRegs.unshift(newReg);
-    try {
-      localStorage.setItem('elcomdais_registrations', JSON.stringify(localRegs));
-    } catch (e) {
-      console.warn('localStorage quota note for registrations:', e);
-    }
-
-    // 2. Try direct Supabase table insert
-    if (supabase) {
-      try {
-        await supabase.from('registrations').insert(newReg);
-      } catch (e) {
-        console.warn('Supabase direct registrations table insert note:', e);
-      }
-
-      // 3. Cloud sync to settings table (key: 'registrations') as guaranteed backup
-      try {
-        const allRegs = await this.getRegistrations();
-        const exists = allRegs.some(r => r.id === newReg.id);
-        if (!exists) allRegs.unshift(newReg);
-        await supabase
-          .from('settings')
-          .upsert({ key: 'registrations', value: JSON.stringify(allRegs), updatedAt: new Date().toISOString() });
-      } catch (e) {
-        console.warn('Supabase settings registrations backup sync note:', e);
-      }
-    }
-
+    const { error } = await supabase.from('registrations').insert(newReg);
+    if (error) throw new Error('Could not save your registration. Please try again.');
     return newReg;
   },
 
   async saveRegistration(id, updatedData) {
     memCache.registrations = null;
-    const regString = JSON.stringify(updatedData);
-    let allRegs = [];
-    try {
-      allRegs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
-    } catch (e) {
-      allRegs = [];
-    }
-
-    const idx = allRegs.findIndex(r => r.id === id);
-    if (idx !== -1) {
-      allRegs[idx].data = regString;
-      try {
-        localStorage.setItem('elcomdais_registrations', JSON.stringify(allRegs));
-      } catch (e) {}
-    }
-
-    if (supabase) {
-      try {
-        await supabase.from('registrations').update({ data: regString }).eq('id', id);
-      } catch (e) {}
-      try {
-        const fullList = await this.getRegistrations();
-        const fIdx = fullList.findIndex(r => r.id === id);
-        if (fIdx !== -1) fullList[fIdx].data = regString;
-        await supabase
-          .from('settings')
-          .upsert({ key: 'registrations', value: JSON.stringify(fullList), updatedAt: new Date().toISOString() });
-      } catch (e) {}
-    }
-
+    const { error } = await supabase.from('registrations').update({ data: JSON.stringify(updatedData) }).eq('id', id);
+    if (error) throw error;
     return true;
   },
 
   async deleteRegistration(id) {
     memCache.registrations = null;
-    // 1. ALWAYS remove from local storage first
-    let regs = [];
-    try {
-      regs = JSON.parse(localStorage.getItem('elcomdais_registrations') || '[]');
-    } catch (e) {
-      regs = [];
-    }
-    const filtered = regs.filter(r => r.id !== id);
-    try {
-      localStorage.setItem('elcomdais_registrations', JSON.stringify(filtered));
-    } catch (e) {}
-
-    // 2. Delete from Supabase — use locally-filtered list for settings update
-    // (avoids re-fetching stale data before Supabase delete propagates)
-    if (supabase) {
-      try {
-        await supabase.from('registrations').delete().eq('id', id);
-      } catch (e) {
-        console.warn('Supabase deleteRegistration table delete failed:', e);
-      }
-      try {
-        // Build combined list: merge remote entries not in local, then remove deleted id
-        const { data: settingsData } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'registrations')
-          .maybeSingle();
-        let remoteList = [];
-        if (settingsData?.value) {
-          try { remoteList = JSON.parse(settingsData.value); } catch (_) {}
-        }
-        // Merge, then strip deleted id from both sources
-        const mergedIds = new Set(filtered.map(r => r.id));
-        const merged = [...filtered];
-        for (const r of remoteList) {
-          if (r.id !== id && !mergedIds.has(r.id)) merged.push(r);
-        }
-        await supabase
-          .from('settings')
-          .upsert({ key: 'registrations', value: JSON.stringify(merged), updatedAt: new Date().toISOString() });
-      } catch (e) {
-        console.warn('Supabase deleteRegistration settings sync failed:', e);
-      }
-    }
-
+    const { error } = await supabase.from('registrations').delete().eq('id', id);
+    if (error) throw error;
     return true;
   },
 
@@ -1086,61 +946,11 @@ export const dbService = {
     return cleanData;
   },
 
-  // --- AUTHENTICATION ---
-  async registerAdmin(username, password, name) {
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email: username,
-          password: password,
-          options: {
-            data: {
-              full_name: name
-            }
-          }
-        });
-        if (!error && data.user) {
-          return { username: data.user.email, name: name };
-        }
-        if (error) throw error;
-      } catch (e) {
-        console.warn('Supabase Auth signUp failed, trying local database fallback', e);
-      }
-    }
-
-    const admins = JSON.parse(localStorage.getItem('elcomdais_admins') || '[]');
-    const exists = admins.find(a => a.username.toLowerCase() === username.toLowerCase());
-    if (exists) {
-      throw new Error('Admin username already exists.');
-    }
-    const newAdmin = { username, password, name };
-    admins.push(newAdmin);
-    localStorage.setItem('elcomdais_admins', JSON.stringify(admins));
-    return newAdmin;
-  },
-
+  // --- AUTHENTICATION (Supabase Auth only; no local/default credentials) ---
   async login(username, password) {
-    if (supabase) {
-      try {
-        // Authenticating via supabase auth if supported, fallback to table check
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: username,
-          password: password
-        });
-        if (!error && data.user) {
-          return { username: data.user.email, name: data.user.email.split('@')[0], token: data.session.access_token };
-        }
-      } catch (e) {
-        console.warn('Supabase Auth signIn failed, trying table/local database', e);
-      }
-    }
-
-    // Local authentication check
-    const admins = JSON.parse(localStorage.getItem('elcomdais_admins') || '[]');
-    const matched = admins.find(a => a.username.toLowerCase() === username.toLowerCase() && a.password === password);
-    if (matched) {
-      return { username: matched.username, name: matched.name, token: 'local-session-token' };
-    }
-    throw new Error('Invalid username or password.');
+    if (!supabase) throw new Error('Authentication service unavailable.');
+    const { data, error } = await supabase.auth.signInWithPassword({ email: username, password });
+    if (error || !data.user) throw new Error('Invalid username or password.');
+    return { username: data.user.email, name: data.user.email.split('@')[0], token: data.session.access_token };
   }
 };

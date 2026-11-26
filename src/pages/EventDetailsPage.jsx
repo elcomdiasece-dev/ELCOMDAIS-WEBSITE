@@ -9,7 +9,7 @@ const emptyMember = () => ({ regno: '', name: '', email: '', classYear: '', sect
 export default function EventDetailsPage() {
   const { slug } = useParams();
   const [event, setEvent] = useState(null);
-  const [registrations, setRegistrations] = useState([]);
+  const [registrationCount, setRegistrationCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -48,8 +48,7 @@ export default function EventDetailsPage() {
         setEvent(evt);
 
         // Load registrations count
-        const regs = await dbService.getRegistrations(evt.id);
-        setRegistrations(regs);
+        setRegistrationCount(await dbService.getRegistrationCount(evt.id));
 
         // Determine initial registration mode
         const regType = evt.registrationType || 'individual';
@@ -164,7 +163,7 @@ export default function EventDetailsPage() {
   }
   const faqs = JSON.parse(event.faq || '[]');
   const isPast = new Date(event.startDate) < new Date();
-  const isFull = registrations.length >= event.capacity;
+  const isFull = registrationCount >= event.capacity;
 
   const regType = event.registrationType || 'individual';
   const isTeamEvent = regType === 'team';
@@ -187,34 +186,9 @@ export default function EventDetailsPage() {
   };
 
   // Check for duplicate regno or email within the SAME event registrations
-  const checkDuplicates = (allRegs, eventId, regnos, emails) => {
-    const existing = allRegs.filter(r => r.eventId === eventId);
-    for (const reg of existing) {
-      let parsed = {};
-      try { parsed = JSON.parse(reg.data || '{}'); } catch (e) {}
-      const existingRegnos = [];
-      const existingEmails = [];
-      if (parsed.teamMembers && Array.isArray(parsed.teamMembers)) {
-        parsed.teamMembers.forEach(m => {
-          if (m.regno) existingRegnos.push(m.regno.toLowerCase().trim());
-          if (m.email) existingEmails.push(m.email.toLowerCase().trim());
-        });
-      } else {
-        if (parsed.regno) existingRegnos.push(parsed.regno.toLowerCase().trim());
-        if (parsed.email) existingEmails.push(parsed.email.toLowerCase().trim());
-      }
-      for (const r of regnos) {
-        if (r && existingRegnos.includes(r.toLowerCase().trim())) {
-          return `Duplicate: Register No. "${r}" is already registered for this event.`;
-        }
-      }
-      for (const em of emails) {
-        if (em && existingEmails.includes(em.toLowerCase().trim())) {
-          return `Duplicate: Email "${em}" is already registered for this event.`;
-        }
-      }
-    }
-    return null;
+  const checkDuplicates = async (eventId, regnos, emails) => {
+    const taken = await dbService.findTakenValue(eventId, [...regnos, ...emails]);
+    return taken ? `Duplicate: "${taken}" is already registered for this event.` : null;
   };
 
   const handleSubmitRegistration = async (e) => {
@@ -223,8 +197,6 @@ export default function EventDetailsPage() {
     setFormError('');
 
     try {
-      // Fetch latest registrations to check for duplicates
-      const allRegs = await dbService.getRegistrations();
 
       if (selectedRegMode === 'team') {
         // --- TEAM REGISTRATION VALIDATION ---
@@ -264,7 +236,7 @@ export default function EventDetailsPage() {
         }
 
         // Cross-event duplicate check for same event
-        const dupError = checkDuplicates(allRegs, event.id, regnos, emails);
+        const dupError = await checkDuplicates(event.id, regnos, emails);
         if (dupError) { setFormError(dupError); setSubmitting(false); return; }
 
         // Validate leader extra fields
@@ -292,8 +264,7 @@ export default function EventDetailsPage() {
 
         const response = await dbService.registerUser(event.id, payload);
         setSuccessData(response);
-        const updatedRegs = await dbService.getRegistrations(event.id);
-        setRegistrations(updatedRegs);
+        setRegistrationCount(await dbService.getRegistrationCount(event.id));
 
       } else {
         // --- INDIVIDUAL REGISTRATION VALIDATION ---
@@ -317,13 +288,12 @@ export default function EventDetailsPage() {
         // Cross-event duplicate check for same event
         const emailVal = (formData['email'] || '').trim();
         const regnoVal = (formData['regno'] || '').trim();
-        const dupError = checkDuplicates(allRegs, event.id, regnoVal ? [regnoVal] : [], emailVal ? [emailVal] : []);
+        const dupError = await checkDuplicates(event.id, regnoVal ? [regnoVal] : [], emailVal ? [emailVal] : []);
         if (dupError) { setFormError(dupError); setSubmitting(false); return; }
 
         const response = await dbService.registerUser(event.id, { ...formData, registrationType: 'individual' });
         setSuccessData(response);
-        const updatedRegs = await dbService.getRegistrations(event.id);
-        setRegistrations(updatedRegs);
+        setRegistrationCount(await dbService.getRegistrationCount(event.id));
       }
     } catch (err) {
       setFormError(err.message || 'An error occurred during registration. Please try again.');
@@ -794,7 +764,7 @@ export default function EventDetailsPage() {
                     <div>
                       <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-main)' }}>Availability</span>
                       <span style={{ color: 'var(--text-muted)' }}>
-                        {registrations.length} of {event.capacity} seats registered
+                        {registrationCount} of {event.capacity} seats registered
                       </span>
                     </div>
                   </div>

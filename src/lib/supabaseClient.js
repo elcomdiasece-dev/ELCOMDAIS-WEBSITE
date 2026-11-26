@@ -37,10 +37,62 @@ if (!rawKey) {
   rawKey = FALLBACK_KEY;
 }
 
+// Circuit breaker state to avoid hanging requests when Supabase is paused or unreachable
+let isSupabaseOffline = false;
+let offlineCooldownUntil = 0;
+const READ_TIMEOUT_MS = 2500; // fast fallback for reads
+const WRITE_TIMEOUT_MS = 30000; // writes carry base64 images; 2.5s would abort them
+
+const resilientFetch = async (url, options = {}) => {
+  const now = Date.now();
+  if (isSupabaseOffline && now < offlineCooldownUntil) {
+    throw new Error('Supabase client is temporarily offline due to previous timeout.');
+  }
+
+  const controller = new AbortController();
+  const method = (options.method || 'GET').toUpperCase();
+  const timeoutMs = method === 'GET' || method === 'HEAD' ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS;
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  if (options.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(timer);
+      controller.abort();
+    } else {
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    isSupabaseOffline = false;
+    return response;
+  } catch (err) {
+    // If request timed out, aborted, or had a network failure, trip circuit breaker for 30s
+    if (err.name === 'AbortError' || err.message?.includes('abort') || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+      isSupabaseOffline = true;
+      offlineCooldownUntil = Date.now() + 30000;
+      console.warn('Supabase cloud service timed out or is unreachable. Falling back immediately to local storage / IndexedDB.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 let client = null;
 if (rawUrl && rawKey) {
   try {
-    client = createClient(rawUrl, rawKey);
+    client = createClient(rawUrl, rawKey, {
+      global: {
+        fetch: resilientFetch
+      }
+    });
   } catch (e) {
     console.warn('Failed to initialize Supabase client:', e);
     client = null;
@@ -48,6 +100,7 @@ if (rawUrl && rawKey) {
 }
 
 export const supabase = client;
+
 
 
 
