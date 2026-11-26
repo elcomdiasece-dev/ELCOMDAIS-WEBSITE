@@ -514,7 +514,13 @@ export const dbService = {
       registeredAt: new Date().toISOString()
     };
     const { error } = await supabase.from('registrations').insert(newReg);
-    if (error) throw new Error('Could not save your registration. Please try again.');
+    if (error) {
+      const m = error.message || '';
+      if (m.includes('EVENT_FULL')) throw new Error('Sorry, this event is full.');
+      if (m.includes('DUPLICATE')) throw new Error(`Duplicate: ${m.split('DUPLICATE: ')[1] || 'details'} already registered for this event.`);
+      if (m.includes('RATE_LIMITED')) throw new Error('Too many registrations from your network. Please wait a few minutes and try again.');
+      throw new Error('Could not save your registration. Please try again.');
+    }
     return newReg;
   },
 

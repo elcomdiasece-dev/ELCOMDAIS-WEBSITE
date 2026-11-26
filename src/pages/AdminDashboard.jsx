@@ -768,6 +768,13 @@ export default function AdminDashboard() {
     return events.find(e => e.id === id)?.title || 'Event';
   };
 
+  // Quote a CSV cell and neutralise spreadsheet formulas (=, +, -, @) from public form input.
+  const csvCell = (v) => {
+    let t = String(v || '');
+    if (/^[=+@-]/.test(t)) t = "'" + t;
+    return `"${t.replace(/"/g, '""')}"`;
+  };
+
   const handleExportCSV = () => {
     const eventRegs = getRegsForSelectedEvent();
     const eventTitle = getEventTitleById(selectedRegEventId);
@@ -780,16 +787,16 @@ export default function AdminDashboard() {
       if (data.registrationType === 'team' && Array.isArray(data.teamMembers)) {
         data.teamMembers.forEach((m, idx) => {
           const row = [
-            `"${(data.teamName || '').replace(/"/g, '""')}"`,
+            csvCell(data.teamName),
             idx + 1,
-            `"${(m.regno || '').replace(/"/g, '""')}"`,
-            `"${(m.name || '').replace(/"/g, '""')}"`,
-            `"${(m.email || '').replace(/"/g, '""')}"`,
-            `"${(m.classYear || '').replace(/"/g, '""')}"`,
-            `"${(m.section || '').replace(/"/g, '""')}"`,
-            `"${(data.phone || '').replace(/"/g, '""')}"`,
-            `"${(data.department || '').replace(/"/g, '""')}"`,
-            `"${(data.year || '').replace(/"/g, '""')}"`
+            csvCell(m.regno),
+            csvCell(m.name),
+            csvCell(m.email),
+            csvCell(m.classYear),
+            csvCell(m.section),
+            csvCell(data.phone),
+            csvCell(data.department),
+            csvCell(data.year)
           ];
           csvLines.push(row.join(','));
         });
@@ -797,14 +804,14 @@ export default function AdminDashboard() {
         const row = [
           '',
           1,
-          `"${(data.regno || '').replace(/"/g, '""')}"`,
-          `"${(data.name || '').replace(/"/g, '""')}"`,
-          `"${(data.email || '').replace(/"/g, '""')}"`,
+          csvCell(data.regno),
+          csvCell(data.name),
+          csvCell(data.email),
           '',
-          `"${(data.section || '').replace(/"/g, '""')}"`,
-          `"${(data.phone || '').replace(/"/g, '""')}"`,
-          `"${(data.department || '').replace(/"/g, '""')}"`,
-          `"${(data.year || '').replace(/"/g, '""')}"`
+          csvCell(data.section),
+          csvCell(data.phone),
+          csvCell(data.department),
+          csvCell(data.year)
         ];
         csvLines.push(row.join(','));
       }
