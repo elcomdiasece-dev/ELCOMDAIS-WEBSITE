@@ -8,6 +8,7 @@ import CalendarPage from './pages/CalendarPage';
 import EventDetailsPage from './pages/EventDetailsPage';
 import GalleryPage from './pages/GalleryPage';
 import About from './pages/About';
+import JoinPage from './pages/JoinPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="/events/:slug" element={<EventDetailsPage />} />
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/about" element={<About />} />
+            <Route path="/join" element={<JoinPage />} />
             <Route path="/login" element={<AdminLogin />} />
             <Route 
               path="/admin" 

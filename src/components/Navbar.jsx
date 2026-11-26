@@ -28,17 +28,6 @@ export default function Navbar() {
     { name: 'About', path: '/about' }
   ];
 
-  const handleJoinUsClick = (e) => {
-    e.preventDefault();
-    setIsOpen(false);
-    const footerElement = document.getElementById('stay-connected');
-    if (footerElement) {
-      footerElement.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      navigate('/about');
-    }
-  };
-
   return (
     <nav className="header-nav">
       <div className="container navbar-container">
@@ -91,9 +80,9 @@ export default function Navbar() {
             </Link>
           )}
 
-          <a href="#stay-connected" onClick={handleJoinUsClick} className="btn btn-primary" style={{ padding: '0.55rem 1.1rem', fontSize: '0.85rem' }}>
+          <Link to="/join" className="btn btn-primary" style={{ padding: '0.55rem 1.1rem', fontSize: '0.85rem' }}>
             <UserPlus size={15} /> Join Us
-          </a>
+          </Link>
 
           {isAdmin && (
             <button
@@ -148,14 +137,14 @@ export default function Navbar() {
           })}
           
           <li style={{ width: '100%', display: 'flex', justifyContent: 'center', margin: '0.5rem 0' }}>
-            <a
-              href="#stay-connected"
-              onClick={handleJoinUsClick}
+            <Link
+              to="/join"
+              onClick={() => setIsOpen(false)}
               className="btn btn-primary"
               style={{ width: '80%', padding: '0.65rem' }}
             >
               <UserPlus size={16} /> Join Us
-            </a>
+            </Link>
           </li>
 
           {isAdmin ? (

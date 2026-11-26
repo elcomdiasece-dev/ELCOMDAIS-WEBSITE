@@ -952,6 +952,32 @@ export const dbService = {
     return cleanData;
   },
 
+  // --- CLUB MEMBERS (join form) ---
+  async joinClub(form) {
+    if (!supabase) throw new Error('Service unavailable. Please try again later.');
+    const { error } = await supabase.from('members').insert({
+      name: form.name.trim(), regno: form.regno.trim(), year: form.year, section: form.section, branch: form.branch
+    });
+    if (error) {
+      const m = error.message || '';
+      if (m.includes('members_regno_unique') || error.code === '23505') throw new Error('This register number has already joined.');
+      if (m.includes('RATE_LIMITED')) throw new Error('Too many submissions from your network. Please wait a few minutes.');
+      throw new Error('Could not submit. Please try again.');
+    }
+    // Copy to the Google Sheet (best effort; Supabase stays the source of truth).
+    const sheetUrl = import.meta.env.VITE_MEMBERS_SHEET_URL;
+    if (sheetUrl) {
+      fetch(sheetUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(form) }).catch(() => {});
+    }
+    return true;
+  },
+
+  async getMembers() {
+    const { data, error } = await supabase.from('members').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
   // --- AUTHENTICATION (Supabase Auth only; no local/default credentials) ---
   async login(username, password) {
     if (!supabase) throw new Error('Authentication service unavailable.');

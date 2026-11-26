@@ -14,8 +14,13 @@ export default function CalendarPage() {
   const [selectedMonth, setSelectedMonth] = useState('All');
   const [selectedDay, setSelectedDay] = useState(null); // Selected date day-number
 
-  // Calendar State: Default to August 2026
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 1)); // Month index 7 is August
+  // Calendar State: open on the current month, kept inside the academic year (Jul 2026 - May 2027)
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    const first = new Date(2026, 6, 1), last = new Date(2027, 4, 1);
+    const cur = new Date(now.getFullYear(), now.getMonth(), 1);
+    return cur < first ? first : cur > last ? last : cur;
+  });
 
   useEffect(() => {
     async function loadEvents() {

@@ -400,15 +400,12 @@ export default function Home() {
               <p className="cta-desc">
                 Collaborate. Innovate. Inspire. Together, let's create the future.
               </p>
-              <a href="#stay-connected" onClick={(e) => {
-                e.preventDefault();
-                document.getElementById('stay-connected')?.scrollIntoView({ behavior: 'smooth' });
-              }} className="btn btn-primary" style={{ gap: '12px' }}>
+              <Link to="/join" className="btn btn-primary" style={{ gap: '12px' }}>
                 Join Us Now
                 <span className="btn-icon-wrapper">
                   <ArrowRight size={15} />
                 </span>
-              </a>
+              </Link>
             </div>
 
             {/* Banner Right Image */}

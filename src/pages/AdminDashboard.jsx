@@ -158,6 +158,7 @@ const DEFAULT_TEAM = {
 };
 
 export default function AdminDashboard() {
+  const [members, setMembers] = useState([]);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'events', 'registrations', 'gallery', 'committee'
   const [events, setEvents] = useState([]);
   const [registrations, setRegistrations] = useState([]);
@@ -775,6 +776,18 @@ export default function AdminDashboard() {
     return `"${t.replace(/"/g, '""')}"`;
   };
 
+  const handleExportMembers = () => {
+    const rows = [['Name', 'Reg No', 'Year', 'Section', 'Branch', 'Joined'],
+      ...members.map(m => [m.name, m.regno, m.year, m.section, m.branch, new Date(m.created_at).toLocaleString()])];
+    // BOM so Excel reads UTF-8 correctly
+    const csv = String.fromCharCode(0xFEFF) + rows.map(r => r.map(csvCell).join(',')).join(String.fromCharCode(10));
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    link.download = 'elcomdais_members.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   const handleExportCSV = () => {
     const eventRegs = getRegsForSelectedEvent();
     const eventTitle = getEventTitleById(selectedRegEventId);
@@ -1037,6 +1050,13 @@ export default function AdminDashboard() {
               style={{ justifyContent: 'flex-start', gap: '10px', width: '100%' }}
             >
               <ImageIcon size={18} /> Photo Albums
+            </button>
+            <button
+              onClick={() => { setActiveTab('members'); setEditingEvent(null); dbService.getMembers().then(setMembers).catch((e) => { console.warn('Could not load members:', e); setMembers([]); }); }}
+              className={`btn ${activeTab === 'members' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ justifyContent: 'flex-start', gap: '10px', width: '100%' }}
+            >
+              <Users size={18} /> Members
             </button>
             <button
               onClick={() => { setActiveTab('committee'); setEditingEvent(null); }}
@@ -1683,6 +1703,38 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* TAB: CLUB MEMBERS (join form) */}
+            {!loading && activeTab === 'members' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)' }}>Members ({members.length})</h3>
+                  <button className="btn btn-primary" disabled={members.length === 0} onClick={handleExportMembers}>
+                    <Download size={16} /> Download for Excel
+                  </button>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
+                        {['Name', 'Reg No', 'Year', 'Section', 'Branch'].map(h => <th key={h} style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {members.map(m => (
+                        <tr key={m.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '8px 12px', fontWeight: 600 }}>{m.name}</td>
+                          <td style={{ padding: '8px 12px' }}>{m.regno}</td>
+                          <td style={{ padding: '8px 12px' }}>{m.year}</td>
+                          <td style={{ padding: '8px 12px' }}>{m.section}</td>
+                          <td style={{ padding: '8px 12px' }}>{m.branch}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
