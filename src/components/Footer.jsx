@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 export default function Footer() {
   const [email, setEmail] = useState('');
@@ -93,25 +93,6 @@ export default function Footer() {
                 </button>
               </div>
             </form>
-          </div>
-
-          {/* Column 5: Contact Us */}
-          <div>
-            <h4 className="footer-heading">Contact Us</h4>
-            <ul className="footer-contact-list">
-              <li className="footer-contact-item">
-                <Mail size={16} />
-                <a href="mailto:elcomdais@sastra.edu">elcomdais@sastra.edu</a>
-              </li>
-              <li className="footer-contact-item">
-                <MapPin size={16} />
-                <span>Thanjavur, Tamil Nadu, India</span>
-              </li>
-              <li className="footer-contact-item">
-                <Phone size={16} />
-                <a href="tel:+911234567890">+91 12345 67890</a>
-              </li>
-            </ul>
           </div>
         </div>
 
