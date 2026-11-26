@@ -34,3 +34,13 @@ create trigger guard_member before insert on public.members for each row execute
 -- If you ran an earlier version of this file, this brings the branch rule up to date.
 alter table public.members drop constraint if exists members_branch_check;
 alter table public.members add constraint members_branch_check check (branch in ('B.Tech ECE','E&CS'));
+
+-- Email column: SASTRA addresses only, one member per email.
+alter table public.members add column if not exists email text;
+alter table public.members drop constraint if exists members_email_check;
+alter table public.members add constraint members_email_check
+  check (email is null or (length(email) <= 100 and email ~* '^[a-z0-9._-]+@sastra[.]ac[.]in$'));
+create unique index if not exists members_email_unique on public.members (lower(email));
+-- New public submissions must include an email (older rows may be blank).
+drop policy if exists members_insert_public on public.members;
+create policy members_insert_public on public.members for insert to anon, authenticated with check (email is not null);

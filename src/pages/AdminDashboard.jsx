@@ -777,8 +777,8 @@ export default function AdminDashboard() {
   };
 
   const handleExportMembers = () => {
-    const rows = [['Name', 'Reg No', 'Year', 'Section', 'Branch', 'Joined'],
-      ...members.map(m => [m.name, m.regno, m.year, m.section, m.branch, new Date(m.created_at).toLocaleString()])];
+    const rows = [['Name', 'Reg No', 'Email', 'Year', 'Section', 'Branch', 'Joined'],
+      ...members.map(m => [m.name, m.regno, m.email || '', m.year, m.section, m.branch, new Date(m.created_at).toLocaleString()])];
     // BOM so Excel reads UTF-8 correctly
     const csv = String.fromCharCode(0xFEFF) + rows.map(r => r.map(csvCell).join(',')).join(String.fromCharCode(10));
     const link = document.createElement('a');
@@ -1719,7 +1719,7 @@ export default function AdminDashboard() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
-                        {['Name', 'Reg No', 'Year', 'Section', 'Branch'].map(h => <th key={h} style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{h}</th>)}
+                        {['Name', 'Reg No', 'Email', 'Year', 'Section', 'Branch'].map(h => <th key={h} style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{h}</th>)}
                       </tr>
                     </thead>
                     <tbody>
@@ -1727,6 +1727,7 @@ export default function AdminDashboard() {
                         <tr key={m.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                           <td style={{ padding: '8px 12px', fontWeight: 600 }}>{m.name}</td>
                           <td style={{ padding: '8px 12px' }}>{m.regno}</td>
+                          <td style={{ padding: '8px 12px' }}>{m.email}</td>
                           <td style={{ padding: '8px 12px' }}>{m.year}</td>
                           <td style={{ padding: '8px 12px' }}>{m.section}</td>
                           <td style={{ padding: '8px 12px' }}>{m.branch}</td>

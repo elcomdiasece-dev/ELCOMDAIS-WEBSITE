@@ -6,7 +6,7 @@ import { AlertCircle, CheckCircle } from 'lucide-react';
 const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 const SECTIONS = ['A', 'B', 'C'];
 const BRANCHES = ['B.Tech ECE', 'E&CS'];
-const empty = { name: '', regno: '', year: '', section: '', branch: '' };
+const empty = { name: '', regno: '', email: '', year: '', section: '', branch: '' };
 
 export default function JoinPage() {
   const [form, setForm] = useState(empty);
@@ -21,6 +21,7 @@ export default function JoinPage() {
     setError('');
     if (form.name.trim().length < 2) return setError('Please enter your full name.');
     if (!/^[A-Za-z0-9]{3,20}$/.test(form.regno.trim())) return setError('Please enter a valid register number.');
+    if (!/^[A-Za-z0-9._-]+@sastra\.ac\.in$/i.test(form.email.trim())) return setError('Please use your SASTRA email (name@sastra.ac.in).');
     setLoading(true);
     try {
       await dbService.joinClub(form);
@@ -73,6 +74,10 @@ export default function JoinPage() {
               <div className="form-group" style={{ marginBottom: '18px' }}>
                 <label className="form-label">Register No.</label>
                 <input required maxLength={20} className="form-input" value={form.regno} onChange={set('regno')} />
+              </div>
+              <div className="form-group" style={{ marginBottom: '18px' }}>
+                <label className="form-label">SASTRA Email</label>
+                <input required type="email" maxLength={100} placeholder="regno@sastra.ac.in" className="form-input" value={form.email} onChange={set('email')} />
               </div>
               {select('year', 'Year', YEARS)}
               {select('section', 'Section', SECTIONS)}

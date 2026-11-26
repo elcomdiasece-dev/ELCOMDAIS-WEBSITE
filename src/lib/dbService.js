@@ -956,10 +956,11 @@ export const dbService = {
   async joinClub(form) {
     if (!supabase) throw new Error('Service unavailable. Please try again later.');
     const { error } = await supabase.from('members').insert({
-      name: form.name.trim(), regno: form.regno.trim(), year: form.year, section: form.section, branch: form.branch
+      name: form.name.trim(), regno: form.regno.trim(), email: form.email.trim().toLowerCase(), year: form.year, section: form.section, branch: form.branch
     });
     if (error) {
       const m = error.message || '';
+      if (m.includes('members_email_unique')) throw new Error('This email has already joined.');
       if (m.includes('members_regno_unique') || error.code === '23505') throw new Error('This register number has already joined.');
       if (m.includes('RATE_LIMITED')) throw new Error('Too many submissions from your network. Please wait a few minutes.');
       throw new Error('Could not submit. Please try again.');
